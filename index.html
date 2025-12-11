@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8" />
+    <title>MapLibre Rectangle + 3D Buildings</title>
+
+    <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@5.13.0/dist/maplibre-gl.css" />
+
+    <style>
+        html,
+        body {
+            margin: 0;
+            padding: 0;
+            height: 100%;
+            overflow: hidden;
+        }
+
+        #map {
+            position: absolute;
+            top: 0;
+            bottom: 0;
+            width: 100%;
+        }
+
+        #toolbar {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            z-index: 1;
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        .toolbar-button {
+            padding: 6px 10px;
+            background: rgba(30, 30, 30, 0.8);
+            color: #fff;
+            border: 1px solid #555;
+            border-radius: 4px;
+            font-size: 13px;
+            cursor: pointer;
+        }
+
+        .toolbar-button.active {
+            background: rgba(0, 120, 215, 0.9);
+        }
+    </style>
+</head>
+
+<body>
+    <div id="toolbar">
+        <button id="drawButton" class="toolbar-button">Draw rectangle</button>
+        <button id="clearButton" class="toolbar-button">Clear selection</button>
+        <button id="build3DButton" class="toolbar-button">Build 3D</button>
+
+        <!-- New: toggle selection visibility -->
+        <label class="toolbar-button" style="display: inline-flex; align-items: center; gap: 6px;">
+            <input type="checkbox" id="toggleSelection" checked />
+            Show selection
+        </label>
+    </div>
+
+    <div id="map"></div>
+
+    <script src="https://unpkg.com/maplibre-gl@5.13.0/dist/maplibre-gl.js"></script>
+
+    <!-- Turf.js for geometry operations -->
+    <script src="https://cdn.jsdelivr.net/npm/@turf/turf@6/turf.min.js"></script>
+
+    <script src="main.js"></script>
+</body>
+
+</html>
