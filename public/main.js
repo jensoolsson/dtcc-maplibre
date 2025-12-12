@@ -14,7 +14,12 @@ const map = new maplibregl.Map({
     minPitch: MIN_PITCH, // optional, default is 0
 });
 
+
 map.addControl(new maplibregl.NavigationControl());
+
+// Turn off built-in drag rotate so it doesn't fight us
+map.dragRotate.disable();
+map.touchZoomRotate.disableRotation();
 
 // ---- 2. Rectangle draw state ----
 
@@ -34,6 +39,15 @@ let axisV = null; // { x, y }
 // Last rectangle ring used for selection (array of [lng, lat])
 let currentSelectionRing = null;
 
+// Turf polygon built from the selection ring (or null if none)
+let selectionPolygon = null;
+
+// Whether buses should be shown (only after Build 3D)
+let busesEnabled = false;
+
+// Visibility flags from checkboxes
+let buildingsVisible = true;
+let busesVisible = true;
 
 // --- Vehicle interpolation state ---
 
@@ -46,12 +60,12 @@ let animationStartTime = performance.now();
 const POLL_INTERVAL_MS = 5000;        // how often you poll /api/vehicles
 const ANIMATION_DURATION_MS = 4500;    // how long to interpolate between snapshots
 
-
-
 const drawButton = document.getElementById("drawButton");
 const clearButton = document.getElementById("clearButton");
 const build3DButton = document.getElementById("build3DButton");
 const toggleSelectionCheckbox = document.getElementById("toggleSelection");
+const toggleBuildingsCheckbox = document.getElementById("toggleBuildings");
+const toggleBusesCheckbox = document.getElementById("toggleBuses");
 
 // Arm drawing when button is clicked
 drawButton.addEventListener("click", () => {
@@ -69,6 +83,8 @@ clearButton.addEventListener("click", () => {
     axisV = null;
     localCosLat = null;
     currentSelectionRing = null;
+    selectionPolygon = null;
+    busesEnabled = false;
 
     drawButton.classList.remove("active");
     drawButton.textContent = "Draw rectangle";
@@ -92,7 +108,12 @@ clearButton.addEventListener("click", () => {
         });
     }
 
-    console.log("Selection + 3D cleared");
+    const busSrc = map.getSource("bus-positions");
+    if (busSrc) {
+        busSrc.setData({ type: "FeatureCollection", features: [] });
+    }
+
+    console.log("Selection + 3D buildings + buses cleared");
 });
 
 
@@ -109,8 +130,38 @@ function setSelectionVisibility(show) {
     });
 }
 
+function setBuildingsVisibility(show) {
+    buildingsVisible = show;
+    if (map.getLayer("buildings-3d-layer")) {
+        map.setLayoutProperty(
+            "buildings-3d-layer",
+            "visibility",
+            show ? "visible" : "none"
+        );
+    }
+}
+
+function setBusesVisibility(show) {
+    busesVisible = show;
+    if (map.getLayer("bus-positions-layer")) {
+        map.setLayoutProperty(
+            "bus-positions-layer",
+            "visibility",
+            show ? "visible" : "none"
+        );
+    }
+}
+
 toggleSelectionCheckbox.addEventListener("change", (e) => {
     setSelectionVisibility(e.target.checked);
+});
+
+toggleBuildingsCheckbox.addEventListener("change", (e) => {
+    setBuildingsVisibility(e.target.checked);
+});
+
+toggleBusesCheckbox.addEventListener("change", (e) => {
+    setBusesVisibility(e.target.checked);
 });
 
 // ---- 3. Building footprints data (GeoJSON) ----
@@ -184,6 +235,8 @@ map.on("load", () => {
     // Mark selection layers as ready and sync with checkbox
     selectionLayersReady = true;
     setSelectionVisibility(toggleSelectionCheckbox.checked);
+    setBuildingsVisibility(toggleBuildingsCheckbox.checked);
+    setBusesVisibility(toggleBusesCheckbox.checked);
 
     // --- Live bus positions (initially empty) ---
     map.addSource("bus-positions", {
@@ -260,9 +313,9 @@ function updateRectangleFromAxes(anchor, a, b) {
 
     src.setData(rectangleGeoJSON);
     currentSelectionRing = ring;
+
+    selectionPolygon = turf.polygon([ring]);
 }
-
-
 
 // Helper to update rectangle source
 function updateRectangleSource(bounds) {
@@ -295,6 +348,68 @@ function updateRectangleSource(bounds) {
 
     src.setData(rectangleGeoJSON);
 }
+
+// ---- 5. Mouse events for custom rotation ----
+
+let isCustomRotating = false;
+let lastMousePos = null;
+
+// Explicit yaw/pitch state (deg)
+let yawDeg = map.getBearing();   // yaw around vertical (north)
+let pitchDeg = map.getPitch();   // pitch (0 = top-down)
+
+// Prevent the context menu on right-click
+map.getCanvas().addEventListener("contextmenu", (e) => {
+    e.preventDefault();
+});
+
+window.addEventListener("mousemove", (e) => {
+    if (!isCustomRotating || !lastMousePos) return;
+
+    const dx = e.clientX - lastMousePos.x;
+    const dy = e.clientY - lastMousePos.y;
+    lastMousePos = { x: e.clientX, y: e.clientY };
+
+    // Sensitivity – tweak these to taste
+    const yawSpeed = 0.15;    // deg per pixel horizontally
+    const pitchSpeed = 0.1;  // deg per pixel vertically
+
+    // Yaw (bearing): horizontal drag
+    yawDeg += dx * yawSpeed;
+
+    // Pitch: vertical drag
+    pitchDeg -= dy * pitchSpeed;
+    pitchDeg = Math.max(MIN_PITCH, Math.min(MAX_PITCH, pitchDeg));
+
+    map.setBearing(yawDeg);
+    map.setPitch(pitchDeg);
+});
+
+window.addEventListener("mouseup", (e) => {
+    if (!isCustomRotating) return;
+    // Only end when right button is released
+    if (e.button !== 2) return;
+
+    isCustomRotating = false;
+    map.dragPan.enable();
+    map.getCanvas().style.cursor = "";
+});
+
+// Start rotate on right mouse down
+map.getCanvas().addEventListener("mousedown", (e) => {
+    // 2 = right mouse button
+    if (e.button !== 2) return;
+
+    // Don't rotate while drawing a selection rectangle
+    if (isDrawing || drawModeArmed) return;
+
+    e.preventDefault();
+    isCustomRotating = true;
+    lastMousePos = { x: e.clientX, y: e.clientY };
+    map.dragPan.disable();
+    map.getCanvas().style.cursor = "grab";
+});
+
 
 // ---- 5. Mouse events for drawing ----
 
@@ -331,7 +446,6 @@ map.on("mousedown", (e) => {
     map.getCanvas().style.cursor = "crosshair";
 });
 
-
 map.on("mousemove", (e) => {
     if (!isDrawing || !anchorLngLat || !axisU || !axisV || !localCosLat) return;
 
@@ -349,8 +463,6 @@ map.on("mousemove", (e) => {
 
     updateRectangleFromAxes(anchorLngLat, a, b);
 });
-
-
 
 map.on("mouseup", () => {
     if (!isDrawing) return;
@@ -420,6 +532,12 @@ build3DButton.addEventListener("click", () => {
             { padding: 40 }
         );
     }
+
+    // Enable buses only after we have built 3D in this area
+    busesEnabled = true;
+    // Respect current checkbox state
+    setBusesVisibility(toggleBusesCheckbox.checked);
+    setBuildingsVisibility(toggleBuildingsCheckbox.checked);
 });
 
 
@@ -477,28 +595,38 @@ function startVehicleLoop() {
     animateVehicles();
 }
 
-
 function animateVehicles() {
     const now = performance.now();
     const elapsed = now - animationStartTime;
     const tRaw = elapsed / ANIMATION_DURATION_MS;
-    // Clamp 0..1
-    //const t = Math.max(0, Math.min(1, tRaw));
-
     const tClamped = Math.max(0, Math.min(1, tRaw));
-    // ease in/out
-    const t = tClamped * tClamped * (3 - 2 * tClamped);
+    const t = tClamped * tClamped * (3 - 2 * tClamped); // easing
 
     const src = map.getSource("bus-positions");
-    if (src) {
+
+    if (src && (!selectionPolygon || !busesEnabled)) {
+        src.setData({
+            type: "FeatureCollection",
+            features: [],
+        });
+        requestAnimationFrame(animateVehicles);
+        return;
+    }
+
+    if (src && selectionPolygon && busesEnabled) {
         const features = [];
 
         for (const [id, curr] of currVehicles.entries()) {
             const prev = prevVehicles.get(id) || curr;
 
-            // Linear interpolation
             const lon = prev.lon + (curr.lon - prev.lon) * t;
             const lat = prev.lat + (curr.lat - prev.lat) * t;
+
+            // Only keep vehicles inside the selection polygon
+            const pt = turf.point([lon, lat]);
+            if (!turf.booleanPointInPolygon(pt, selectionPolygon)) {
+                continue;
+            }
 
             features.push({
                 type: "Feature",
@@ -524,7 +652,7 @@ function animateVehicles() {
         src.setData(geojson);
     }
 
-    // Schedule next frame
     requestAnimationFrame(animateVehicles);
 }
+
 
