@@ -1,19 +1,23 @@
 // ---- 1. Map setup ----
 
-const MAX_PITCH = 80; // or 85
+const MAX_PITCH = 85;
 const MIN_PITCH = 0;
+
+const baseStyles = {
+    light: "https://basemaps.cartocdn.com/gl/positron-gl-style/style.json",
+    dark: "https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json",
+};
 
 const map = new maplibregl.Map({
     container: "map",
-    style: "https://basemaps.cartocdn.com/gl/voyager-gl-style/style.json",
+    style: baseStyles.light,
     center: [18.0686, 59.3293], // Stockholm
     zoom: 13,
-    pitch: 60,        // start a bit more tilted
+    pitch: 60,
     bearing: -60,
-    maxPitch: MAX_PITCH, // allow more tilt towards horizon
-    minPitch: MIN_PITCH, // optional, default is 0
+    maxPitch: MAX_PITCH,
+    minPitch: MIN_PITCH,
 });
-
 
 map.addControl(new maplibregl.NavigationControl());
 
@@ -21,103 +25,50 @@ map.addControl(new maplibregl.NavigationControl());
 map.dragRotate.disable();
 map.touchZoomRotate.disableRotation();
 
-// ---- 2. Rectangle draw state ----
+// ---- Global state ----
 
+// Rectangle drawing
 let isDrawing = false;
 let drawModeArmed = false;
+let anchorLngLat = null;      // first click
+let localCosLat = null;       // cos(lat0)
+let axisU = null;             // camera-aligned X
+let axisV = null;             // camera-aligned Y
+let currentSelectionRing = null; // [[lng,lat], ...]
+let selectionPolygon = null;     // turf polygon
 
-// Anchor corner (first click) in lng/lat
-let anchorLngLat = null;
+// Buildings (3D)
+let allBuildings = null;
+let currentBuildingsGeoJSON = {
+    type: "FeatureCollection",
+    features: [],
+};
 
-// Local scaling: cos(lat0) for this anchor
-let localCosLat = null;
-
-// Camera-aligned axes in local (X,Y) space
-let axisU = null; // { x, y }
-let axisV = null; // { x, y }
-
-// Last rectangle ring used for selection (array of [lng, lat])
-let currentSelectionRing = null;
-
-// Turf polygon built from the selection ring (or null if none)
-let selectionPolygon = null;
-
-// Whether buses should be shown (only after Build 3D)
-let busesEnabled = false;
-
-// Visibility flags from checkboxes
+// Buses
+let busesEnabled = false;   // only after Build 3D
 let buildingsVisible = true;
 let busesVisible = true;
 
-// --- Vehicle interpolation state ---
+// Selection visibility
+let selectionLayersReady = false;
 
-// Maps vehicle id -> { lon, lat }
-let prevVehicles = new Map();
+// Vehicle interpolation state
+let prevVehicles = new Map(); // id -> {lon,lat,...}
 let currVehicles = new Map();
-
-// Timing for interpolation
 let animationStartTime = performance.now();
-const POLL_INTERVAL_MS = 5000;        // how often you poll /api/vehicles
-const ANIMATION_DURATION_MS = 4500;    // how long to interpolate between snapshots
+const POLL_INTERVAL_MS = 5000;
+const ANIMATION_DURATION_MS = 4500;
 
+// DOM elements
 const drawButton = document.getElementById("drawButton");
 const clearButton = document.getElementById("clearButton");
 const build3DButton = document.getElementById("build3DButton");
 const toggleSelectionCheckbox = document.getElementById("toggleSelection");
 const toggleBuildingsCheckbox = document.getElementById("toggleBuildings");
 const toggleBusesCheckbox = document.getElementById("toggleBuses");
+const themeSelect = document.getElementById("themeSelect");
 
-// Arm drawing when button is clicked
-drawButton.addEventListener("click", () => {
-    drawModeArmed = true;
-    drawButton.classList.add("active");
-    drawButton.textContent = "Click + drag to draw";
-});
-
-// Clear selection
-clearButton.addEventListener("click", () => {
-    isDrawing = false;
-    drawModeArmed = false;
-    anchorLngLat = null;
-    axisU = null;
-    axisV = null;
-    localCosLat = null;
-    currentSelectionRing = null;
-    selectionPolygon = null;
-    busesEnabled = false;
-
-    drawButton.classList.remove("active");
-    drawButton.textContent = "Draw rectangle";
-    map.dragPan.enable();
-    map.getCanvas().style.cursor = "";
-
-    const src = map.getSource("selection-rectangle");
-    if (src) {
-        src.setData({
-            type: "FeatureCollection",
-            features: [],
-        });
-    }
-
-    // Also clear 3D buildings
-    const bSrc = map.getSource("buildings-3d");
-    if (bSrc) {
-        bSrc.setData({
-            type: "FeatureCollection",
-            features: [],
-        });
-    }
-
-    const busSrc = map.getSource("bus-positions");
-    if (busSrc) {
-        busSrc.setData({ type: "FeatureCollection", features: [] });
-    }
-
-    console.log("Selection + 3D buildings + buses cleared");
-});
-
-
-let selectionLayersReady = false;
+// ---- Helpers for layer visibility ----
 
 function setSelectionVisibility(show) {
     if (!selectionLayersReady) return;
@@ -152,37 +103,9 @@ function setBusesVisibility(show) {
     }
 }
 
-toggleSelectionCheckbox.addEventListener("change", (e) => {
-    setSelectionVisibility(e.target.checked);
-});
+// ---- 2. Custom sources + layers (reused after style change) ----
 
-toggleBuildingsCheckbox.addEventListener("change", (e) => {
-    setBuildingsVisibility(e.target.checked);
-});
-
-toggleBusesCheckbox.addEventListener("change", (e) => {
-    setBusesVisibility(e.target.checked);
-});
-
-// ---- 3. Building footprints data (GeoJSON) ----
-
-let allBuildings = null;
-
-// Load your buildings dataset (adjust path as needed)
-// This should be a FeatureCollection of building polygons.
-fetch("sthlm_XL.geojson")
-    .then((res) => res.json())
-    .then((data) => {
-        allBuildings = data;
-        console.log("Loaded buildings:", allBuildings.features.length);
-    })
-    .catch((err) => {
-        console.error("Error loading *.geojson file", err);
-    });
-
-// ---- 4. Sources + layers ----
-
-map.on("load", () => {
+function setupCustomLayers() {
     // Selection rectangle
     map.addSource("selection-rectangle", {
         type: "geojson",
@@ -212,13 +135,30 @@ map.on("load", () => {
         },
     });
 
-    // 3D buildings layer (initially empty)
+    // If we already have a selection ring, redraw it so it survives theme changes
+    if (currentSelectionRing) {
+        const srcSel = map.getSource("selection-rectangle");
+        if (srcSel) {
+            srcSel.setData({
+                type: "FeatureCollection",
+                features: [
+                    {
+                        type: "Feature",
+                        properties: {},
+                        geometry: {
+                            type: "Polygon",
+                            coordinates: [currentSelectionRing],
+                        },
+                    },
+                ],
+            });
+        }
+    }
+
+    // 3D buildings - use cached GeoJSON so it persists across theme changes
     map.addSource("buildings-3d", {
         type: "geojson",
-        data: {
-            type: "FeatureCollection",
-            features: [],
-        },
+        data: currentBuildingsGeoJSON,
     });
 
     map.addLayer({
@@ -227,18 +167,12 @@ map.on("load", () => {
         source: "buildings-3d",
         paint: {
             "fill-extrusion-color": "#888888",
-            "fill-extrusion-height": 30, // constant height in metres
+            "fill-extrusion-height": 30, // constant height
             "fill-extrusion-opacity": 0.8,
         },
     });
 
-    // Mark selection layers as ready and sync with checkbox
-    selectionLayersReady = true;
-    setSelectionVisibility(toggleSelectionCheckbox.checked);
-    setBuildingsVisibility(toggleBuildingsCheckbox.checked);
-    setBusesVisibility(toggleBusesCheckbox.checked);
-
-    // --- Live bus positions (initially empty) ---
+    // Buses
     map.addSource("bus-positions", {
         type: "geojson",
         data: {
@@ -260,23 +194,136 @@ map.on("load", () => {
         },
     });
 
-    // Start polling vehicle positions
-    startVehicleLoop();
+    // Mark selection layers as ready and sync with checkboxes
+    selectionLayersReady = true;
+    setSelectionVisibility(toggleSelectionCheckbox.checked);
+    setBuildingsVisibility(toggleBuildingsCheckbox.checked);
+    setBusesVisibility(toggleBusesCheckbox.checked);
+}
 
+// ---- 3. UI handlers (buttons, checkboxes, theme) ----
 
+// Arm drawing when button is clicked
+drawButton.addEventListener("click", () => {
+    drawModeArmed = true;
+    drawButton.classList.add("active");
+    drawButton.textContent = "Click + drag to draw";
 });
+
+// Clear selection + buildings + buses
+clearButton.addEventListener("click", () => {
+    isDrawing = false;
+    drawModeArmed = false;
+    anchorLngLat = null;
+    axisU = null;
+    axisV = null;
+    localCosLat = null;
+    currentSelectionRing = null;
+    selectionPolygon = null;
+    busesEnabled = false;
+
+    drawButton.classList.remove("active");
+    drawButton.textContent = "Draw rectangle";
+    map.dragPan.enable();
+    map.getCanvas().style.cursor = "";
+
+    const selSrc = map.getSource("selection-rectangle");
+    if (selSrc) {
+        selSrc.setData({
+            type: "FeatureCollection",
+            features: [],
+        });
+    }
+
+    // Clear buildings cache + source
+    currentBuildingsGeoJSON = {
+        type: "FeatureCollection",
+        features: [],
+    };
+    const bSrc = map.getSource("buildings-3d");
+    if (bSrc) {
+        bSrc.setData(currentBuildingsGeoJSON);
+    }
+
+    // Clear buses
+    const busSrc = map.getSource("bus-positions");
+    if (busSrc) {
+        busSrc.setData({
+            type: "FeatureCollection",
+            features: [],
+        });
+    }
+
+    console.log("Selection + 3D buildings + buses cleared");
+});
+
+toggleSelectionCheckbox.addEventListener("change", (e) => {
+    setSelectionVisibility(e.target.checked);
+});
+
+toggleBuildingsCheckbox.addEventListener("change", (e) => {
+    setBuildingsVisibility(e.target.checked);
+});
+
+toggleBusesCheckbox.addEventListener("change", (e) => {
+    setBusesVisibility(e.target.checked);
+});
+
+// Theme switch (light / dark)
+themeSelect.addEventListener("change", (e) => {
+    const value = e.target.value; // "light" or "dark"
+    const styleUrl = baseStyles[value];
+    if (!styleUrl) return;
+
+    // Save current camera state
+    const center = map.getCenter();
+    const zoom = map.getZoom();
+    const bearing = map.getBearing();
+    const pitch = map.getPitch();
+
+    // Reset flag so we can re-set selection visibility later
+    selectionLayersReady = false;
+
+    // Switch style
+    map.setStyle(styleUrl);
+
+    // When the new style is ready, restore view + re-add custom layers
+    map.once("styledata", () => {
+        map.jumpTo({ center, zoom, bearing, pitch });
+        setupCustomLayers();
+    });
+});
+
+// ---- 4. Building footprints data (GeoJSON) ----
+
+fetch("sthlm_XL.geojson")
+    .then((res) => res.json())
+    .then((data) => {
+        allBuildings = data;
+        console.log("Loaded buildings:", allBuildings.features.length);
+    })
+    .catch((err) => {
+        console.error("Error loading *.geojson file", err);
+    });
+
+// ---- 5. Map load ----
+
+map.on("load", () => {
+    setupCustomLayers();
+    startVehicleLoop();
+});
+
+// ---- 6. Rectangle drawing (camera-aligned) ----
 
 function updateRectangleFromAxes(anchor, a, b) {
     const src = map.getSource("selection-rectangle");
     if (!src || !axisU || !axisV || !anchor || !localCosLat) return;
 
-    // Corners in *local* coordinates
-    const c0 = { x: 0, y: 0 }; // anchor
+    // Corners in local coordinates
     const c1 = { x: a * axisU.x, y: a * axisU.y };
     const c3 = { x: b * axisV.x, y: b * axisV.y };
-    const c2 = { x: c1.x + c3.x, y: c1.y + c3.y }; // stays under mouse
+    const c2 = { x: c1.x + c3.x, y: c1.y + c3.y };
 
-    // Convert local (X,Y) back to lng/lat
     function localToLngLat(pt) {
         return {
             lng: anchor.lng + pt.x / localCosLat,
@@ -284,7 +331,7 @@ function updateRectangleFromAxes(anchor, a, b) {
         };
     }
 
-    const A = { lng: anchor.lng, lat: anchor.lat }; // anchor itself
+    const A = { lng: anchor.lng, lat: anchor.lat };
     const B = localToLngLat(c1);
     const C = localToLngLat(c2);
     const D = localToLngLat(c3);
@@ -313,106 +360,10 @@ function updateRectangleFromAxes(anchor, a, b) {
 
     src.setData(rectangleGeoJSON);
     currentSelectionRing = ring;
-
     selectionPolygon = turf.polygon([ring]);
 }
 
-// Helper to update rectangle source
-function updateRectangleSource(bounds) {
-    const src = map.getSource("selection-rectangle");
-    if (!src) return;
-
-    const [minLng, minLat, maxLng, maxLat] = bounds;
-
-    const rectangleGeoJSON = {
-        type: "FeatureCollection",
-        features: [
-            {
-                type: "Feature",
-                properties: {},
-                geometry: {
-                    type: "Polygon",
-                    coordinates: [
-                        [
-                            [minLng, minLat],
-                            [maxLng, minLat],
-                            [maxLng, maxLat],
-                            [minLng, maxLat],
-                            [minLng, minLat],
-                        ],
-                    ],
-                },
-            },
-        ],
-    };
-
-    src.setData(rectangleGeoJSON);
-}
-
-// ---- 5. Mouse events for custom rotation ----
-
-let isCustomRotating = false;
-let lastMousePos = null;
-
-// Explicit yaw/pitch state (deg)
-let yawDeg = map.getBearing();   // yaw around vertical (north)
-let pitchDeg = map.getPitch();   // pitch (0 = top-down)
-
-// Prevent the context menu on right-click
-map.getCanvas().addEventListener("contextmenu", (e) => {
-    e.preventDefault();
-});
-
-window.addEventListener("mousemove", (e) => {
-    if (!isCustomRotating || !lastMousePos) return;
-
-    const dx = e.clientX - lastMousePos.x;
-    const dy = e.clientY - lastMousePos.y;
-    lastMousePos = { x: e.clientX, y: e.clientY };
-
-    // Sensitivity – tweak these to taste
-    const yawSpeed = 0.15;    // deg per pixel horizontally
-    const pitchSpeed = 0.1;  // deg per pixel vertically
-
-    // Yaw (bearing): horizontal drag
-    yawDeg += dx * yawSpeed;
-
-    // Pitch: vertical drag
-    pitchDeg -= dy * pitchSpeed;
-    pitchDeg = Math.max(MIN_PITCH, Math.min(MAX_PITCH, pitchDeg));
-
-    map.setBearing(yawDeg);
-    map.setPitch(pitchDeg);
-});
-
-window.addEventListener("mouseup", (e) => {
-    if (!isCustomRotating) return;
-    // Only end when right button is released
-    if (e.button !== 2) return;
-
-    isCustomRotating = false;
-    map.dragPan.enable();
-    map.getCanvas().style.cursor = "";
-});
-
-// Start rotate on right mouse down
-map.getCanvas().addEventListener("mousedown", (e) => {
-    // 2 = right mouse button
-    if (e.button !== 2) return;
-
-    // Don't rotate while drawing a selection rectangle
-    if (isDrawing || drawModeArmed) return;
-
-    e.preventDefault();
-    isCustomRotating = true;
-    lastMousePos = { x: e.clientX, y: e.clientY };
-    map.dragPan.disable();
-    map.getCanvas().style.cursor = "grab";
-});
-
-
-// ---- 5. Mouse events for drawing ----
-
+// Mouse events for drawing
 map.on("mousedown", (e) => {
     if (!drawModeArmed) return;
     if (e.originalEvent.button !== 0) return; // left click only
@@ -421,22 +372,16 @@ map.on("mousedown", (e) => {
     anchorLngLat = e.lngLat;
     currentSelectionRing = null;
 
-    // Local scaling based on anchor latitude
     const lat0Rad = (anchorLngLat.lat * Math.PI) / 180;
     localCosLat = Math.cos(lat0Rad);
 
-    // Map bearing in radians (clockwise from north)
     const bearingDeg = map.getBearing();
     const bearingRad = (bearingDeg * Math.PI) / 180;
 
-    // In local coordinates: X ≈ east, Y ≈ north
-    // Unit vector u along bearing
     axisU = {
         x: Math.sin(bearingRad),
         y: Math.cos(bearingRad),
     };
-
-    // v is perpendicular to u
     axisV = {
         x: -axisU.y,
         y: axisU.x,
@@ -452,12 +397,9 @@ map.on("mousemove", (e) => {
     const lng = e.lngLat.lng;
     const lat = e.lngLat.lat;
 
-    // Convert P to *local* coordinates relative to anchor
-    const dX = (lng - anchorLngLat.lng) * localCosLat; // east-west, scaled
-    const dY = (lat - anchorLngLat.lat);               // north-south
+    const dX = (lng - anchorLngLat.lng) * localCosLat;
+    const dY = (lat - anchorLngLat.lat);
 
-    // d in local coords
-    // Decompose d into components along u and v
     const a = dX * axisU.x + dY * axisU.y;
     const b = dX * axisV.x + dY * axisV.y;
 
@@ -489,23 +431,71 @@ map.on("mouseup", () => {
     });
 });
 
+// ---- 7. Custom rotation with right mouse button ----
 
-// ---- 6. Build 3D button: filter buildings and extrude ----
+let isCustomRotating = false;
+let lastMousePos = null;
+let yawDeg = map.getBearing();
+let pitchDeg = map.getPitch();
+
+// Prevent context menu on right-click
+map.getCanvas().addEventListener("contextmenu", (e) => {
+    e.preventDefault();
+});
+
+map.getCanvas().addEventListener("mousedown", (e) => {
+    // right mouse button
+    if (e.button !== 2) return;
+    if (isDrawing || drawModeArmed) return;
+
+    e.preventDefault();
+    isCustomRotating = true;
+    lastMousePos = { x: e.clientX, y: e.clientY };
+    map.dragPan.disable();
+    map.getCanvas().style.cursor = "grab";
+});
+
+window.addEventListener("mousemove", (e) => {
+    if (!isCustomRotating || !lastMousePos) return;
+
+    const dx = e.clientX - lastMousePos.x;
+    const dy = e.clientY - lastMousePos.y;
+    lastMousePos = { x: e.clientX, y: e.clientY };
+
+    const yawSpeed = 0.15;
+    const pitchSpeed = 0.1;
+
+    yawDeg += dx * yawSpeed;
+    pitchDeg -= dy * pitchSpeed;
+    pitchDeg = Math.max(MIN_PITCH, Math.min(MAX_PITCH, pitchDeg));
+
+    map.setBearing(yawDeg);
+    map.setPitch(pitchDeg);
+});
+
+window.addEventListener("mouseup", (e) => {
+    if (!isCustomRotating) return;
+    if (e.button !== 2) return;
+
+    isCustomRotating = false;
+    map.dragPan.enable();
+    map.getCanvas().style.cursor = "";
+});
+
+// ---- 8. Build 3D button: filter buildings and extrude ----
 
 build3DButton.addEventListener("click", () => {
     if (!allBuildings) {
         console.warn("Buildings not loaded yet");
         return;
     }
-    if (!currentSelectionRing) {
+    if (!currentSelectionRing || !selectionPolygon) {
         console.warn("No selection rectangle defined");
         return;
     }
 
-    const selectionPoly = turf.polygon([currentSelectionRing]);
-
     const selectedFeatures = allBuildings.features.filter((f) =>
-        turf.booleanIntersects(f, selectionPoly)
+        turf.booleanIntersects(f, selectionPolygon)
     );
 
     const selectedCollection = {
@@ -517,9 +507,11 @@ build3DButton.addEventListener("click", () => {
         `Selected ${selectedFeatures.length} buildings inside camera-aligned rectangle`
     );
 
+    currentBuildingsGeoJSON = selectedCollection;
+
     const src = map.getSource("buildings-3d");
     if (src) {
-        src.setData(selectedCollection);
+        src.setData(currentBuildingsGeoJSON);
     }
 
     if (selectedFeatures.length > 0) {
@@ -535,11 +527,11 @@ build3DButton.addEventListener("click", () => {
 
     // Enable buses only after we have built 3D in this area
     busesEnabled = true;
-    // Respect current checkbox state
-    setBusesVisibility(toggleBusesCheckbox.checked);
     setBuildingsVisibility(toggleBuildingsCheckbox.checked);
+    setBusesVisibility(toggleBusesCheckbox.checked);
 });
 
+// ---- 9. Vehicle fetching + interpolation ----
 
 async function fetchVehiclesSnapshot() {
     try {
@@ -555,11 +547,9 @@ async function fetchVehiclesSnapshot() {
             return;
         }
 
-        // Shift current -> previous
         prevVehicles = currVehicles;
         currVehicles = new Map();
 
-        // Fill currVehicles from new snapshot
         for (const v of data.vehicles) {
             if (typeof v.lon !== "number" || typeof v.lat !== "number") continue;
             currVehicles.set(v.id || `${v.lon},${v.lat}`, {
@@ -572,7 +562,6 @@ async function fetchVehiclesSnapshot() {
             });
         }
 
-        // Reset interpolation window
         animationStartTime = performance.now();
 
         console.log(
@@ -583,15 +572,9 @@ async function fetchVehiclesSnapshot() {
     }
 }
 
-// Main loop: fetch every POLL_INTERVAL_MS and animate continuously
 function startVehicleLoop() {
-    // Kick off first fetch
     fetchVehiclesSnapshot();
-
-    // Poll regularly
     setInterval(fetchVehiclesSnapshot, POLL_INTERVAL_MS);
-
-    // Start animation frame loop
     animateVehicles();
 }
 
@@ -604,7 +587,8 @@ function animateVehicles() {
 
     const src = map.getSource("bus-positions");
 
-    if (src && (!selectionPolygon || !busesEnabled)) {
+    // No selection, buses not enabled, or user hid buses → nothing
+    if (src && (!selectionPolygon || !busesEnabled || !busesVisible)) {
         src.setData({
             type: "FeatureCollection",
             features: [],
@@ -613,7 +597,7 @@ function animateVehicles() {
         return;
     }
 
-    if (src && selectionPolygon && busesEnabled) {
+    if (src && selectionPolygon && busesEnabled && busesVisible) {
         const features = [];
 
         for (const [id, curr] of currVehicles.entries()) {
@@ -622,7 +606,6 @@ function animateVehicles() {
             const lon = prev.lon + (curr.lon - prev.lon) * t;
             const lat = prev.lat + (curr.lat - prev.lat) * t;
 
-            // Only keep vehicles inside the selection polygon
             const pt = turf.point([lon, lat]);
             if (!turf.booleanPointInPolygon(pt, selectionPolygon)) {
                 continue;
@@ -644,15 +627,11 @@ function animateVehicles() {
             });
         }
 
-        const geojson = {
+        src.setData({
             type: "FeatureCollection",
             features,
-        };
-
-        src.setData(geojson);
+        });
     }
 
     requestAnimationFrame(animateVehicles);
 }
-
-

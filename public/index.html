@@ -51,6 +51,15 @@
 
 <body>
     <div id="toolbar">
+        <!-- NEW: Light / Dark theme -->
+        <label class="toolbar-button" style="display: inline-flex; align-items: center; gap: 6px;">
+            Theme:
+            <select id="themeSelect">
+                <option value="light" selected>Light</option>
+                <option value="dark">Dark</option>
+            </select>
+        </label>
+
         <button id="drawButton" class="toolbar-button">Draw rectangle</button>
         <button id="clearButton" class="toolbar-button">Clear selection</button>
         <button id="build3DButton" class="toolbar-button">Build 3D</button>
@@ -72,6 +81,8 @@
             <input type="checkbox" id="toggleBuses" checked />
             Show buses
         </label>
+
+
 
     </div>
 
