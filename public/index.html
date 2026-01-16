@@ -5,7 +5,7 @@
     <meta charset="utf-8" />
     <title>MapLibre Rectangle + 3D Buildings</title>
 
-    <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@5.13.0/dist/maplibre-gl.css" />
+    <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@5.14.0/dist/maplibre-gl.css" />
 
     <style>
         html,
@@ -46,12 +46,16 @@
         .toolbar-button.active {
             background: rgba(0, 120, 215, 0.9);
         }
+
+        /* Make the select look OK inside the label */
+        #themeSelect {
+            margin-left: 6px;
+        }
     </style>
 </head>
 
 <body>
     <div id="toolbar">
-        <!-- NEW: Light / Dark theme -->
         <label class="toolbar-button" style="display: inline-flex; align-items: center; gap: 6px;">
             Theme:
             <select id="themeSelect">
@@ -67,36 +71,30 @@
         <button id="clearButton" class="toolbar-button">Clear selection</button>
         <button id="build3DButton" class="toolbar-button">Build 3D</button>
 
-        <!-- New: toggle selection visibility -->
         <label class="toolbar-button" style="display: inline-flex; align-items: center; gap: 6px;">
             <input type="checkbox" id="toggleSelection" checked />
             Show selection
         </label>
 
-        <!-- Show buildings -->
         <label class="toolbar-button" style="display: inline-flex; align-items: center; gap: 6px;">
             <input type="checkbox" id="toggleBuildings" checked />
             Show buildings
         </label>
 
-        <!-- Show buses -->
         <label class="toolbar-button" style="display: inline-flex; align-items: center; gap: 6px;">
             <input type="checkbox" id="toggleBuses" checked />
             Show buses
         </label>
-
-
-
     </div>
 
     <div id="map"></div>
 
-    <script src="https://unpkg.com/maplibre-gl@5.13.0/dist/maplibre-gl.js"></script>
-
-    <!-- Turf.js for geometry operations -->
+    <!-- Keep MapLibre + Turf as globals -->
+    <script src="https://unpkg.com/maplibre-gl@5.14.0/dist/maplibre-gl.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@turf/turf@6/turf.min.js"></script>
 
-    <script src="main.js"></script>
+    <!-- IMPORTANT: your entry file is now a module -->
+    <script type="module" src="./src/main.js"></script>
 </body>
 
 </html>
