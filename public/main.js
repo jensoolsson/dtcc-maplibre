@@ -6,6 +6,9 @@ const MIN_PITCH = 0;
 const baseStyles = {
     light: "https://basemaps.cartocdn.com/gl/positron-gl-style/style.json",
     dark: "https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json",
+    default: "https://basemaps.cartocdn.com/gl/voyager-gl-style/style.json",
+    positron: "https://basemaps.cartocdn.com/gl/positron-gl-style/style.json",
+    osmBright: "https://demotiles.maplibre.org/style.json",
 };
 
 const map = new maplibregl.Map({
@@ -43,6 +46,9 @@ let currentBuildingsGeoJSON = {
     type: "FeatureCollection",
     features: [],
 };
+
+// Currently selected building id (for feature-state)
+let lastSelectedBuildingId = null;
 
 // Buses
 let busesEnabled = false;   // only after Build 3D
@@ -83,12 +89,10 @@ function setSelectionVisibility(show) {
 
 function setBuildingsVisibility(show) {
     buildingsVisible = show;
+    const visibility = show ? "visible" : "none";
+
     if (map.getLayer("buildings-3d-layer")) {
-        map.setLayoutProperty(
-            "buildings-3d-layer",
-            "visibility",
-            show ? "visible" : "none"
-        );
+        map.setLayoutProperty("buildings-3d-layer", "visibility", visibility);
     }
 }
 
@@ -159,6 +163,7 @@ function setupCustomLayers() {
     map.addSource("buildings-3d", {
         type: "geojson",
         data: currentBuildingsGeoJSON,
+        promoteId: "id",        // <-- add this
     });
 
     map.addLayer({
@@ -166,11 +171,18 @@ function setupCustomLayers() {
         type: "fill-extrusion",
         source: "buildings-3d",
         paint: {
-            "fill-extrusion-color": "#888888",
-            "fill-extrusion-height": 30, // constant height
-            "fill-extrusion-opacity": 0.8,
+            // Color depends on feature-state "selected"
+            "fill-extrusion-color": [
+                "case",
+                ["boolean", ["feature-state", "selected"], false],
+                "#ffff00",  // highlighted
+                "#888888"   // normal
+            ],
+            "fill-extrusion-height": 30,
+            "fill-extrusion-opacity": 0.9,
         },
     });
+
 
     // Buses
     map.addSource("bus-positions", {
@@ -313,6 +325,98 @@ map.on("load", () => {
     startVehicleLoop();
 });
 
+// --- Click / hover on 3D buildings ---
+
+// Change cursor when hovering buildings
+map.on("mouseenter", "buildings-3d-layer", () => {
+    // Don't override the cursor while drawing / rotating
+    if (!isDrawing && !isCustomRotating && !drawModeArmed) {
+        map.getCanvas().style.cursor = "pointer";
+    }
+});
+
+map.on("mouseleave", "buildings-3d-layer", () => {
+    if (!isDrawing && !isCustomRotating && !drawModeArmed) {
+        map.getCanvas().style.cursor = "";
+    }
+});
+
+// Click on a building
+map.on("click", "buildings-3d-layer", (e) => {
+    if (!e.features || !e.features.length) return;
+
+    const feature = e.features[0];
+    const featureId = feature.id;
+
+    if (featureId === undefined || featureId === null) {
+        console.warn("Clicked building has no id – cannot set feature-state");
+        console.log("Clicked building feature.id:", feature.id);
+        return;
+    }
+
+    // Clear previous selection
+    if (lastSelectedBuildingId !== null) {
+        map.setFeatureState(
+            { source: "buildings-3d", id: lastSelectedBuildingId },
+            { selected: false }
+        );
+    }
+
+    // Mark this building as selected
+    map.setFeatureState(
+        { source: "buildings-3d", id: featureId },
+        { selected: true }
+    );
+    lastSelectedBuildingId = featureId;
+
+    // Choose a point for the popup: use feature centroid if possible
+    let popupLngLat = e.lngLat;
+    try {
+        const plainFeature = {
+            type: "Feature",
+            geometry: feature.geometry,
+            properties: { ...(feature.properties || {}) },
+        };
+        const center = turf.centerOfMass(plainFeature);
+        if (center && center.geometry && center.geometry.coordinates) {
+            const [lng, lat] = center.geometry.coordinates;
+            popupLngLat = { lng, lat };
+        }
+    } catch (_) {
+        // fall back to e.lngLat
+    }
+
+    const props = feature.properties || {};
+    const id = props.id || props.osm_id || "–";
+    const height =
+        typeof props.height === "number"
+            ? `${props.height.toFixed(1)} m`
+            : "30 m (default)";
+
+    const name = props.name || props.building || "Building";
+
+    new maplibregl.Popup()
+        .setLngLat(popupLngLat)
+        .setHTML(
+            `<strong>${name}</strong><br/>
+             ID: ${id}<br/>
+             Height: ${height}`
+        )
+        .addTo(map);
+});
+
+map.on("click", (e) => {
+    const features = map.queryRenderedFeatures(e.point, { layers: ["buildings-3d-layer"] });
+    if (features.length) return; // building click handled above
+
+    if (lastSelectedBuildingId !== null) {
+        map.setFeatureState(
+            { source: "buildings-3d", id: lastSelectedBuildingId },
+            { selected: false }
+        );
+        lastSelectedBuildingId = null;
+    }
+});
 // ---- 6. Rectangle drawing (camera-aligned) ----
 
 function updateRectangleFromAxes(anchor, a, b) {
@@ -494,9 +598,22 @@ build3DButton.addEventListener("click", () => {
         return;
     }
 
-    const selectedFeatures = allBuildings.features.filter((f) =>
-        turf.booleanIntersects(f, selectionPolygon)
-    );
+    const selectedFeatures = allBuildings.features
+        .filter((f) => turf.booleanIntersects(f, selectionPolygon))
+        .map((f, idx) => {
+            const baseProps = f.properties || {};
+            const newId = f.id ?? baseProps.id ?? idx;
+
+            return {
+                type: "Feature",
+                geometry: f.geometry,
+                properties: {
+                    ...baseProps,
+                    id: newId,      // <-- needed for promoteId: "id"
+                },
+                id: newId,          // <-- helpful for queryRenderedFeatures
+            };
+        });
 
     const selectedCollection = {
         type: "FeatureCollection",
@@ -512,6 +629,15 @@ build3DButton.addEventListener("click", () => {
     const src = map.getSource("buildings-3d");
     if (src) {
         src.setData(currentBuildingsGeoJSON);
+    }
+
+    // reset any previous selection state (since we rebuilt features)
+    if (lastSelectedBuildingId !== null) {
+        map.removeFeatureState?.({
+            source: "buildings-3d",
+            id: lastSelectedBuildingId,
+        });
+        lastSelectedBuildingId = null;
     }
 
     if (selectedFeatures.length > 0) {
@@ -530,6 +656,7 @@ build3DButton.addEventListener("click", () => {
     setBuildingsVisibility(toggleBuildingsCheckbox.checked);
     setBusesVisibility(toggleBusesCheckbox.checked);
 });
+
 
 // ---- 9. Vehicle fetching + interpolation ----
 
