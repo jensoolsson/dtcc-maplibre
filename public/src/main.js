@@ -13,10 +13,15 @@ import { createUI } from "./ui.js";
 const state = createState();
 const map = createMap(baseStyles.light);
 
+map.on("style.load", () => console.log("[global] style.load fired"));
+map.on("styledata", () => console.log("[global] styledata fired"));
+map.on("error", (e) => console.error("[global] map error", e?.error || e));
+
 let ui;
 let selectionTool;
 
 map.on("load", async () => {
+    console.log("map.on(load)");
     // Layers first
     // ui is needed by setupCustomLayers, but ui also wants selectionTool, so we do a tiny bootstrap:
     ui = {
@@ -36,11 +41,6 @@ map.on("load", async () => {
 
     // Now build the full UI (wires all handlers)
     ui = createUI(map, state, selectionTool);
-
-    // Re-run setupCustomLayers so it uses the *real* ui methods
-    // (optional but keeps everything consistent)
-    state.selectionLayersReady = false;
-    setupCustomLayers(map, state, ui);
 
     // Rotation and interactions
     setupRightMouseRotation(map, state);

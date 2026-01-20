@@ -5,7 +5,11 @@
     <meta charset="utf-8" />
     <title>MapLibre Rectangle + 3D Buildings</title>
 
+    <!-- MapLibre -->
     <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@5.14.0/dist/maplibre-gl.css" />
+
+    <!-- Bootstrap (CDN) -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" />
 
     <style>
         html,
@@ -18,82 +22,123 @@
 
         #map {
             position: absolute;
-            top: 0;
-            bottom: 0;
-            width: 100%;
+            inset: 0;
         }
 
+        /* Floating panel */
         #toolbar {
             position: absolute;
-            top: 10px;
-            left: 10px;
-            z-index: 1;
-            display: flex;
-            flex-direction: column;
-            gap: 6px;
+            top: 12px;
+            left: 12px;
+            z-index: 10;
+            width: 200px;
+            max-width: calc(100vw - 24px);
         }
 
-        .toolbar-button {
-            padding: 6px 10px;
-            background: rgba(30, 30, 30, 0.8);
+        /* Optional: make panel feel nice over a map */
+        .map-panel {
+            background: rgba(154, 154, 154, 0.75);
+            backdrop-filter: blur(8px);
+            -webkit-backdrop-filter: blur(8px);
+            border: 1px solid rgba(255, 255, 255, 0.12);
+        }
+
+        /* Make dropdown readable on dark panel */
+        .map-panel .form-select,
+        .map-panel .form-check-label,
+        .map-panel .btn,
+        .map-panel .text-muted,
+        .map-panel .form-label {
             color: #fff;
-            border: 1px solid #555;
-            border-radius: 4px;
-            font-size: 13px;
-            cursor: pointer;
         }
 
-        .toolbar-button.active {
-            background: rgba(0, 120, 215, 0.9);
+        .map-panel .form-select {
+            background-color: rgba(255, 255, 255, 0.12);
+            border-color: rgba(255, 255, 255, 0.18);
+            color: #fff;
         }
 
-        /* Make the select look OK inside the label */
-        #themeSelect {
-            margin-left: 6px;
+        .map-panel .form-select option {
+            color: #111;
+            /* options list needs dark text */
+        }
+
+        /* Keep your "active" behaviour compatible with existing JS */
+        #drawButton.active {
+            outline: 2px solid rgba(82, 107, 144, 0.9);
+            outline-offset: 2px;
         }
     </style>
 </head>
 
 <body>
-    <div id="toolbar">
-        <label class="toolbar-button" style="display: inline-flex; align-items: center; gap: 6px;">
-            Theme:
-            <select id="themeSelect">
-                <option value="light" selected>Light</option>
-                <option value="dark">Dark</option>
-                <option value="default">Default</option>
-                <option value="positron">Positron</option>
-                <option value="osmBright">OSM Bright</option>
-            </select>
-        </label>
+    <!-- Toolbar panel -->
+    <div id="toolbar" class="card shadow-sm map-panel">
+        <div class="card-body p-3">
+            <div class="d-flex align-items-center justify-content-between mb-2">
+                <div class="fw-semibold">Controls</div>
+                <span class="badge text-bg-secondary">DTCC</span>
+            </div>
 
-        <button id="drawButton" class="toolbar-button">Draw rectangle</button>
-        <button id="clearButton" class="toolbar-button">Clear selection</button>
-        <button id="build3DButton" class="toolbar-button">Build 3D</button>
+            <!-- Theme -->
+            <div class="mb-3">
+                <label for="themeSelect" class="form-label mb-1">Theme</label>
+                <select id="themeSelect" class="form-select form-select-sm">
+                    <option value="light" selected>Light</option>
+                    <option value="dark">Dark</option>
+                    <option value="default">Default</option>
+                    <option value="positron">Positron</option>
+                    <option value="osmBright">OSM Bright</option>
+                </select>
+            </div>
 
-        <label class="toolbar-button" style="display: inline-flex; align-items: center; gap: 6px;">
-            <input type="checkbox" id="toggleSelection" checked />
-            Show selection
-        </label>
+            <!-- Buttons -->
+            <div class="d-grid gap-2 mb-3">
+                <button id="drawButton" class="btn btn-primary btn-sm">
+                    Draw rectangle
+                </button>
+                <button id="build3DButton" class="btn btn-success btn-sm">
+                    Build 3D
+                </button>
+                <button id="clearButton" class="btn btn-outline-light btn-sm">
+                    Clear selection
+                </button>
+            </div>
 
-        <label class="toolbar-button" style="display: inline-flex; align-items: center; gap: 6px;">
-            <input type="checkbox" id="toggleBuildings" checked />
-            Show buildings
-        </label>
+            <!-- Toggles -->
+            <div class="vstack gap-2">
+                <div class="form-check form-switch">
+                    <input class="form-check-input" type="checkbox" id="toggleSelection" checked>
+                    <label class="form-check-label" for="toggleSelection">Show selection</label>
+                </div>
 
-        <label class="toolbar-button" style="display: inline-flex; align-items: center; gap: 6px;">
-            <input type="checkbox" id="toggleBuses" checked />
-            Show buses
-        </label>
+                <div class="form-check form-switch">
+                    <input class="form-check-input" type="checkbox" id="toggleBuildings" checked>
+                    <label class="form-check-label" for="toggleBuildings">Show buildings</label>
+                </div>
+
+                <div class="form-check form-switch">
+                    <input class="form-check-input" type="checkbox" id="toggleBuses" checked>
+                    <label class="form-check-label" for="toggleBuses">Show buses</label>
+                </div>
+            </div>
+
+            <div class="mt-3 small text-muted">
+                Tip: Right mouse button rotates.
+            </div>
+        </div>
     </div>
 
     <div id="map"></div>
 
-    <!-- Keep MapLibre + Turf as globals -->
+    <!-- MapLibre + Turf as globals -->
     <script src="https://unpkg.com/maplibre-gl@5.14.0/dist/maplibre-gl.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@turf/turf@6/turf.min.js"></script>
 
-    <!-- IMPORTANT: your entry file is now a module -->
+    <!-- Bootstrap JS bundle (optional; only needed for dropdowns/modals/tooltips etc.) -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js" defer></script>
+
+    <!-- Your entry file -->
     <script type="module" src="./src/main.js"></script>
 </body>
 

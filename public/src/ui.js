@@ -29,6 +29,20 @@ function setBusesVisibility(map, state, show) {
     }
 }
 
+function waitForStyleReady(map, cb) {
+    if (map.isStyleLoaded()) {
+        cb();
+        return;
+    }
+    const onRender = () => {
+        if (map.isStyleLoaded()) {
+            map.off("render", onRender);
+            cb();
+        }
+    };
+    map.on("render", onRender);
+}
+
 export function createUI(map, state, selectionTool) {
     const ui = {
         drawButton: document.getElementById("drawButton"),
@@ -99,30 +113,53 @@ export function createUI(map, state, selectionTool) {
     ui.toggleBuildingsCheckbox.addEventListener("change", (e) => ui.setBuildingsVisibility(e.target.checked));
     ui.toggleBusesCheckbox.addEventListener("change", (e) => ui.setBusesVisibility(e.target.checked));
 
-    // Theme switching
     ui.themeSelect.addEventListener("change", (e) => {
         const key = e.target.value;
+        console.log("Theme change requested:", key);
+
         const styleUrl = baseStyles[key];
         if (!styleUrl) return;
 
+        // Save camera
         const center = map.getCenter();
         const zoom = map.getZoom();
         const bearing = map.getBearing();
         const pitch = map.getPitch();
 
+        // Block drawing during switch (prevents the "source missing" click)
         state.selectionLayersReady = false;
-        map.setStyle(styleUrl);
+        state.drawModeArmed = false;
+        if (ui.drawButton) {
+            ui.drawButton.disabled = true;
+            ui.drawButton.classList.remove("active");
+            ui.drawButton.textContent = "Loading theme…";
+        }
 
-        map.once("style.load", () => {
+        console.log("before sources:", Object.keys(map.getStyle()?.sources || {}));
+
+        // Force a full rebuild (often helps)
+        map.setStyle(styleUrl, { diff: false });
+
+        waitForStyleReady(map, () => {
+            console.log("style ready; after sources:", Object.keys(map.getStyle()?.sources || {}));
+
             map.jumpTo({ center, zoom, bearing, pitch });
-            setupCustomLayers(map, state, ui);
 
-            // re-apply current checkbox states after layers exist
-            ui.setSelectionVisibility(ui.toggleSelectionCheckbox.checked);
-            ui.setBuildingsVisibility(ui.toggleBuildingsCheckbox.checked);
-            ui.setBusesVisibility(ui.toggleBusesCheckbox.checked);
+            setupCustomLayers(map, state);
+
+            console.log("restored selection source:", !!map.getSource("selection-rectangle"));
+
+            // Re-apply toggles
+            ui.setSelectionVisibility?.(ui.toggleSelectionCheckbox?.checked);
+            ui.setBuildingsVisibility?.(ui.toggleBuildingsCheckbox?.checked);
+            ui.setBusesVisibility?.(ui.toggleBusesCheckbox?.checked);
+
+            // Re-enable drawing
+            if (ui.drawButton) {
+                ui.drawButton.disabled = false;
+                ui.drawButton.textContent = "Draw rectangle";
+            }
         });
     });
-
     return ui;
 }
