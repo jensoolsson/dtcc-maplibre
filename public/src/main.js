@@ -13,10 +13,6 @@ import { createUI } from "./ui.js";
 const state = createState();
 const map = createMap(baseStyles.light);
 
-map.on("style.load", () => console.log("[global] style.load fired"));
-map.on("styledata", () => console.log("[global] styledata fired"));
-map.on("error", (e) => console.error("[global] map error", e?.error || e));
-
 let ui;
 let selectionTool;
 
