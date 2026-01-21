@@ -1,6 +1,6 @@
 // src/ui.js
 
-import { baseStyles } from "./config.js";
+import { baseStyles, uiThemes } from "./config.js";
 import { setupCustomLayers } from "./layers.js";
 import { selectBuildings, applyBuildings } from "./buildings.js";
 
@@ -53,6 +53,16 @@ export function createUI(map, state, selectionTool) {
         toggleBusesCheckbox: document.getElementById("toggleBuses"),
         themeSelect: document.getElementById("themeSelect"),
 
+        togglesWrap: document.getElementById("toggles"),
+        toggleSelectionRow: document.getElementById("toggleSelectionRow"),
+        toggleBuildingsRow: document.getElementById("toggleBuildingsRow"),
+        toggleBusesRow: document.getElementById("toggleBusesRow"),
+
+        showToggles: (show) => ui.togglesWrap?.classList.toggle("d-none", !show),
+        showSelectionToggle: (show) => ui.toggleSelectionRow?.classList.toggle("d-none", !show),
+        showBuildingsToggle: (show) => ui.toggleBuildingsRow?.classList.toggle("d-none", !show),
+        showBusesToggle: (show) => ui.toggleBusesRow?.classList.toggle("d-none", !show),
+
         setSelectionVisibility: (show) => setSelectionVisibility(map, state, show),
         setBuildingsVisibility: (show) => setBuildingsVisibility(map, state, show),
         setBusesVisibility: (show) => setBusesVisibility(map, state, show),
@@ -69,6 +79,13 @@ export function createUI(map, state, selectionTool) {
     ui.clearButton.addEventListener("click", () => {
         selectionTool.clear();
 
+        // Hide build options + disable build
+        ui.showBuildOptions(false);
+
+        // Reset defaults
+        ui.includeBuildingsCheckbox.checked = true;
+        ui.includeBusesCheckbox.checked = false;
+
         state.busesEnabled = false;
 
         // clear buildings cache + source
@@ -77,6 +94,12 @@ export function createUI(map, state, selectionTool) {
 
         // clear buses
         map.getSource("bus-positions")?.setData({ type: "FeatureCollection", features: [] });
+
+        // NEW: hide toggles again
+        ui.showBusesToggle(false);
+        ui.showBuildingsToggle(false);
+        ui.showSelectionToggle(false);
+        ui.showToggles(false);
 
         ui.drawButton.classList.remove("active");
         ui.drawButton.textContent = "Draw rectangle";
@@ -101,6 +124,12 @@ export function createUI(map, state, selectionTool) {
         // enable buses after build
         state.busesEnabled = true;
 
+        // NEW: reveal toggles now they matter
+        ui.showToggles(true);
+        ui.showSelectionToggle(true);
+        ui.showBuildingsToggle(true);
+        ui.showBusesToggle(true);
+
         // respect visibility toggles
         ui.setBuildingsVisibility(ui.toggleBuildingsCheckbox.checked);
         ui.setBusesVisibility(ui.toggleBusesCheckbox.checked);
@@ -113,12 +142,27 @@ export function createUI(map, state, selectionTool) {
     ui.toggleBuildingsCheckbox.addEventListener("change", (e) => ui.setBuildingsVisibility(e.target.checked));
     ui.toggleBusesCheckbox.addEventListener("change", (e) => ui.setBusesVisibility(e.target.checked));
 
+    const buildOptions = document.getElementById("buildOptions");
+    const includeBuildings = document.getElementById("includeBuildings");
+    const includeBuses = document.getElementById("includeBuses");
+
+    ui.buildOptionsWrap = buildOptions;
+    ui.includeBuildingsCheckbox = includeBuildings;
+    ui.includeBusesCheckbox = includeBuses;
+
+    ui.showBuildOptions = (show) => {
+        ui.buildOptionsWrap?.classList.toggle("d-none", !show);
+    };
+
+
     ui.themeSelect.addEventListener("change", (e) => {
         const key = e.target.value;
-        console.log("Theme change requested:", key);
-
         const styleUrl = baseStyles[key];
         if (!styleUrl) return;
+
+        // Apply UI theme (uses CSS vars like html[data-ui-theme="dark"])
+        const uiThemeKey = uiThemes[key] || "light";
+        document.documentElement.dataset.uiTheme = uiThemeKey;
 
         // Save camera
         const center = map.getCenter();
@@ -142,11 +186,8 @@ export function createUI(map, state, selectionTool) {
 
         waitForStyleReady(map, () => {
             console.log("style ready; after sources:", Object.keys(map.getStyle()?.sources || {}));
-
             map.jumpTo({ center, zoom, bearing, pitch });
-
             setupCustomLayers(map, state);
-
             console.log("restored selection source:", !!map.getSource("selection-rectangle"));
 
             // Re-apply toggles
@@ -159,7 +200,11 @@ export function createUI(map, state, selectionTool) {
                 ui.drawButton.disabled = false;
                 ui.drawButton.textContent = "Draw rectangle";
             }
+
         });
     });
+
+    ui.showBuildOptions(false);
+
     return ui;
 }

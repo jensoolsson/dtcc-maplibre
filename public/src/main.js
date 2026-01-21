@@ -28,15 +28,26 @@ map.on("load", async () => {
         setSelectionVisibility: () => { },
         setBuildingsVisibility: () => { },
         setBusesVisibility: () => { },
+        showToggles: () => { },
+        showSelectionToggle: () => { },
+        showBuildingsToggle: () => { },
+        showBusesToggle: () => { },
     };
+
+
 
     setupCustomLayers(map, state, ui);
 
     // Now the selection tool exists (needs ui to reset button text on mouseup)
     selectionTool = createSelectionTool(map, state, ui);
 
-    // Now build the full UI (wires all handlers)
-    ui = createUI(map, state, selectionTool);
+    Object.assign(ui, createUI(map, state, selectionTool));
+
+    ui.showToggles(false);
+    ui.showBuildingsToggle(false);
+    ui.showBusesToggle(false);
+    // selection toggle will be shown once a selection exists
+    ui.showSelectionToggle(false);
 
     // Rotation and interactions
     setupRightMouseRotation(map, state);

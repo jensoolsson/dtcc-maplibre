@@ -141,6 +141,12 @@ export function createSelectionTool(map, state, ui) {
 
         ui.drawButton?.classList.remove("active");
         ui.drawButton && (ui.drawButton.textContent = "Draw rectangle");
+
+        if (state.currentSelectionRing) {
+            ui.showBuildOptions?.(true);
+            console.log("Selection rectangle defined, showing build options");
+        }
+
     });
 
     return { arm, clear };

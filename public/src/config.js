@@ -8,9 +8,15 @@ export const baseStyles = {
     light: "https://basemaps.cartocdn.com/gl/positron-gl-style/style.json",
     dark: "https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json",
     default: "https://basemaps.cartocdn.com/gl/voyager-gl-style/style.json",
-    positron: "https://basemaps.cartocdn.com/gl/positron-gl-style/style.json",
-    osmBright: "https://demotiles.maplibre.org/style.json",
 };
+
+// Map style key -> UI theme key (or label)
+export const uiThemes = {
+    light: "light",
+    dark: "dark",
+    default: "light",
+};
+
 
 export const initialView = {
     center: [18.0686, 59.3293],
