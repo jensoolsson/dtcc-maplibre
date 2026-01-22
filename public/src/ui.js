@@ -2,12 +2,29 @@
 
 import { baseStyles, uiThemes } from "./config.js";
 import { setupCustomLayers } from "./layers.js";
-import { selectBuildings, applyBuildings } from "./buildings.js";
+import { selectBuildings, applyBuildings, addRandomHeights, getBuildingType } from "./buildings.js";
 
+/** Small utilities */
+const emptyFC = () => ({ type: "FeatureCollection", features: [] });
+
+function waitForStyleReady(map, cb) {
+    if (map.isStyleLoaded()) {
+        cb();
+        return;
+    }
+    const onRender = () => {
+        if (map.isStyleLoaded()) {
+            map.off("render", onRender);
+            cb();
+        }
+    };
+    map.on("render", onRender);
+}
+
+/** Visibility helpers */
 function setSelectionVisibility(map, state, show) {
     if (!state.selectionLayersReady) return;
     const visibility = show ? "visible" : "none";
-
     ["selection-rectangle-fill", "selection-rectangle-outline"].forEach((id) => {
         if (map.getLayer(id)) map.setLayoutProperty(id, "visibility", visibility);
     });
@@ -29,86 +46,218 @@ function setBusesVisibility(map, state, show) {
     }
 }
 
-function waitForStyleReady(map, cb) {
-    if (map.isStyleLoaded()) {
-        cb();
-        return;
-    }
-    const onRender = () => {
-        if (map.isStyleLoaded()) {
-            map.off("render", onRender);
-            cb();
-        }
-    };
-    map.on("render", onRender);
-}
-
+/** Main UI factory */
 export function createUI(map, state, selectionTool) {
+    // ---- DOM refs ------------------------------------------------------------
     const ui = {
+        // buttons
         drawButton: document.getElementById("drawButton"),
         clearButton: document.getElementById("clearButton"),
         build3DButton: document.getElementById("build3DButton"),
-        toggleSelectionCheckbox: document.getElementById("toggleSelection"),
-        toggleBuildingsCheckbox: document.getElementById("toggleBuildings"),
-        toggleBusesCheckbox: document.getElementById("toggleBuses"),
+
+        // theme
         themeSelect: document.getElementById("themeSelect"),
 
+        // build include options
+        buildOptionsWrap: document.getElementById("buildOptions"),
+        includeBuildingsCheckbox: document.getElementById("includeBuildings"),
+        includeBusesCheckbox: document.getElementById("includeBuses"),
+
+        // visibility toggles (shown after build)
         togglesWrap: document.getElementById("toggles"),
         toggleSelectionRow: document.getElementById("toggleSelectionRow"),
         toggleBuildingsRow: document.getElementById("toggleBuildingsRow"),
         toggleBusesRow: document.getElementById("toggleBusesRow"),
+        toggleSelectionCheckbox: document.getElementById("toggleSelection"),
+        toggleBuildingsCheckbox: document.getElementById("toggleBuildings"),
+        toggleBusesCheckbox: document.getElementById("toggleBuses"),
 
-        showToggles: (show) => ui.togglesWrap?.classList.toggle("d-none", !show),
-        showSelectionToggle: (show) => ui.toggleSelectionRow?.classList.toggle("d-none", !show),
-        showBuildingsToggle: (show) => ui.toggleBuildingsRow?.classList.toggle("d-none", !show),
-        showBusesToggle: (show) => ui.toggleBusesRow?.classList.toggle("d-none", !show),
+        // stats panel
+        statsPanel: document.getElementById("statsPanel"),
+        statsStatus: document.getElementById("statsStatus"),
+        statBuildings: document.getElementById("statBuildings"),
+        statArea: document.getElementById("statArea"),
+        statBuses: document.getElementById("statBuses"),
+        statNote: document.getElementById("statNote"),
 
-        setSelectionVisibility: (show) => setSelectionVisibility(map, state, show),
-        setBuildingsVisibility: (show) => setBuildingsVisibility(map, state, show),
-        setBusesVisibility: (show) => setBusesVisibility(map, state, show),
+        // chart
+        chartCanvas: document.getElementById("statsChart"),
+        _chart: null,
+
+        typesCanvas: document.getElementById("typesChart"),
+        typesChart: null,
     };
 
-    // Draw
-    ui.drawButton.addEventListener("click", () => {
-        selectionTool.arm();
-        ui.drawButton.classList.add("active");
-        ui.drawButton.textContent = "Click + drag to draw";
-    });
+    // ---- UI show/hide helpers ------------------------------------------------
+    ui.showBuildOptions = (show) => ui.buildOptionsWrap?.classList.toggle("d-none", !show);
 
-    // Clear
-    ui.clearButton.addEventListener("click", () => {
+    ui.showToggles = (show) => ui.togglesWrap?.classList.toggle("d-none", !show);
+    ui.showSelectionToggle = (show) => ui.toggleSelectionRow?.classList.toggle("d-none", !show);
+    ui.showBuildingsToggle = (show) => ui.toggleBuildingsRow?.classList.toggle("d-none", !show);
+    ui.showBusesToggle = (show) => ui.toggleBusesRow?.classList.toggle("d-none", !show);
+
+    ui.showStatsPanel = (show) => ui.statsPanel?.classList.toggle("d-none", !show);
+
+    // ---- UI setters (map layer visibility) -----------------------------------
+    ui.setSelectionVisibility = (show) => setSelectionVisibility(map, state, show);
+    ui.setBuildingsVisibility = (show) => setBuildingsVisibility(map, state, show);
+    ui.setBusesVisibility = (show) => setBusesVisibility(map, state, show);
+
+    // ---- Stats + chart -------------------------------------------------------
+    const formatArea = (m2) => {
+        if (!Number.isFinite(m2)) return "–";
+        if (m2 >= 1e6) return `${(m2 / 1e6).toFixed(2)} km²`;
+        return `${Math.round(m2).toLocaleString()} m²`;
+    };
+
+    ui.updateStats = ({ buildingsCount, selectionAreaM2, busesEnabled, statusText, note }) => {
+        ui.showStatsPanel(true);
+        if (ui.statsStatus) ui.statsStatus.textContent = statusText ?? "Model ready";
+        if (ui.statBuildings) ui.statBuildings.textContent = (buildingsCount ?? "–").toString();
+        if (ui.statArea) ui.statArea.textContent = formatArea(selectionAreaM2);
+        if (ui.statBuses) ui.statBuses.textContent = busesEnabled ? "Yes" : "No";
+        if (ui.statNote && note != null) ui.statNote.textContent = note;
+    };
+
+    ui.updateChart = ({ heights }) => {
+        if (!ui.chartCanvas || typeof Chart === "undefined") return;
+
+        // histogram bins
+        const bins = [0, 10, 20, 30, 50, 80, 120];
+        const counts = new Array(bins.length - 1).fill(0);
+
+        (heights || []).forEach((hRaw) => {
+            const h = Number(hRaw) || 0;
+            for (let i = 0; i < bins.length - 1; i++) {
+                if (h >= bins[i] && h < bins[i + 1]) {
+                    counts[i]++;
+                    break;
+                }
+            }
+        });
+
+        const labels = bins.slice(0, -1).map((b, i) => `${b}-${bins[i + 1]}m`);
+
+        if (!ui._chart) {
+            ui._chart = new Chart(ui.chartCanvas, {
+                type: "bar",
+                data: { labels, datasets: [{ label: "Buildings", data: counts }] },
+                options: {
+                    responsive: true,
+                    plugins: { legend: { display: false } },
+                    scales: { y: { beginAtZero: true } },
+                },
+            });
+        } else {
+            ui._chart.data.labels = labels;
+            ui._chart.data.datasets[0].data = counts;
+            ui._chart.update();
+        }
+    };
+
+    ui.updateTypeChart = ({ features }) => {
+        if (!ui.typesCanvas || typeof Chart === "undefined") return;
+
+        const counts = new Map();
+        (features || []).forEach((f) => {
+            const t = getBuildingType(f?.properties);
+            counts.set(t, (counts.get(t) || 0) + 1);
+        });
+
+        const labels = Array.from(counts.keys());
+        const data = Array.from(counts.values());
+
+        // grow container when there are many legend rows
+        const pieBox = ui.typesCanvas.closest(".chart-box--pie");
+        if (pieBox) {
+            const base = 220;                 // px
+            const extraPerLabel = 14;         // px per label (tweak)
+            pieBox.style.height = `${base + Math.max(0, labels.length - 6) * extraPerLabel}px`;
+        }
+
+
+        if (!ui.typesChart) {
+            ui.typesChart = new Chart(ui.typesCanvas, {
+                type: "pie",
+                data: { labels, datasets: [{ data }] },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,   // important for flexible container sizing
+                    plugins: {
+                        legend: {
+                            display: true,
+                            position: "bottom",        // 👈 structured legend
+                            align: "start",
+                            labels: {
+                                boxWidth: 10,
+                                boxHeight: 10,
+                                padding: 12,
+                                usePointStyle: true,
+                                pointStyle: "circle",
+                            },
+                        },
+                    },
+                },
+            });
+        } else {
+            ui.typesChart.data.labels = labels;
+            ui.typesChart.data.datasets[0].data = data;
+            ui.typesChart.update();
+        }
+    };
+
+
+    // ---- Actions -------------------------------------------------------------
+    function resetDrawButton() {
+        ui.drawButton?.classList.remove("active");
+        if (ui.drawButton) ui.drawButton.textContent = "Draw rectangle";
+    }
+
+    function clearModelAndUI() {
         selectionTool.clear();
 
-        // Hide build options + disable build
+        // hide build include options again
         ui.showBuildOptions(false);
 
-        // Reset defaults
-        ui.includeBuildingsCheckbox.checked = true;
-        ui.includeBusesCheckbox.checked = false;
+        // reset include defaults (safe)
+        if (ui.includeBuildingsCheckbox) ui.includeBuildingsCheckbox.checked = true;
+        if (ui.includeBusesCheckbox) ui.includeBusesCheckbox.checked = false;
 
+        // Ensure next drawn rectangle is visible (but don't show the toggle UI)
+        if (ui.toggleSelectionCheckbox) ui.toggleSelectionCheckbox.checked = true;
+        ui.setSelectionVisibility?.(true);
+
+        // stop buses + clear sources
         state.busesEnabled = false;
 
-        // clear buildings cache + source
-        state.currentBuildingsGeoJSON = { type: "FeatureCollection", features: [] };
+        state.currentBuildingsGeoJSON = emptyFC();
         map.getSource("buildings-3d")?.setData(state.currentBuildingsGeoJSON);
 
-        // clear buses
-        map.getSource("bus-positions")?.setData({ type: "FeatureCollection", features: [] });
+        map.getSource("bus-positions")?.setData(emptyFC());
 
-        // NEW: hide toggles again
+        // hide the visibility toggles again
         ui.showBusesToggle(false);
         ui.showBuildingsToggle(false);
         ui.showSelectionToggle(false);
         ui.showToggles(false);
 
-        ui.drawButton.classList.remove("active");
-        ui.drawButton.textContent = "Draw rectangle";
+        // stats / chart
+        ui.showStatsPanel(false);
+        ui.updateStats({
+            buildingsCount: "–",
+            selectionAreaM2: null,
+            busesEnabled: false,
+            statusText: "No model",
+            note: "Draw a rectangle and build to see statistics here.",
+        });
 
-        console.log("Selection + buildings + buses cleared");
-    });
+        ui.updateChart({ heights: [] });
+        ui.updateTypeChart({ features: [] });
 
-    // Build 3D
-    ui.build3DButton.addEventListener("click", () => {
+        resetDrawButton();
+    }
+
+    function buildFromSelection() {
         if (!state.allBuildings) {
             console.warn("Buildings not loaded yet");
             return;
@@ -118,93 +267,128 @@ export function createUI(map, state, selectionTool) {
             return;
         }
 
-        const selected = selectBuildings(state.allBuildings, state.selectionPolygon);
-        applyBuildings(map, state, selected);
+        const doBuildings = !!ui.includeBuildingsCheckbox?.checked;
+        const doBuses = !!ui.includeBusesCheckbox?.checked;
 
-        // enable buses after build
-        state.busesEnabled = true;
+        // --- Buildings ---
+        let selected = [];
+        let buildingsCount = 0;
 
-        // NEW: reveal toggles now they matter
+        if (doBuildings) {
+            const minH = 5;
+            const maxH = 30;
+
+            selected = addRandomHeights(selectBuildings(state.allBuildings, state.selectionPolygon), minH, maxH);
+
+            applyBuildings(map, state, selected);
+            buildingsCount = selected.length;
+
+            ui.updateChart({ heights: selected.map((f) => f?.properties?.dt_height ?? 0) });
+            ui.updateTypeChart({ features: selected });
+
+        } else {
+            // clear buildings if not included
+            state.currentBuildingsGeoJSON = emptyFC();
+            map.getSource("buildings-3d")?.setData(state.currentBuildingsGeoJSON);
+            ui.updateChart({ heights: [] });
+        }
+
+        // --- Buses ---
+        state.busesEnabled = doBuses;
+        if (!doBuses) {
+            map.getSource("bus-positions")?.setData(emptyFC());
+        }
+
+        // --- Stats (always useful after build) ---
+        const selectionAreaM2 = state.selectionPolygon ? turf.area(state.selectionPolygon) : null;
+
+        ui.updateStats({
+            buildingsCount,
+            selectionAreaM2,
+            busesEnabled: state.busesEnabled,
+            statusText: "Built",
+            note: "Use the toggles to show/hide layers.",
+        });
+
+        // --- Show visibility toggles only for built content ---
         ui.showToggles(true);
+
+        // you wanted "Show selection" only after build
         ui.showSelectionToggle(true);
-        ui.showBuildingsToggle(true);
-        ui.showBusesToggle(true);
 
-        // respect visibility toggles
-        ui.setBuildingsVisibility(ui.toggleBuildingsCheckbox.checked);
-        ui.setBusesVisibility(ui.toggleBusesCheckbox.checked);
+        ui.showBuildingsToggle(doBuildings);
+        ui.showBusesToggle(doBuses);
 
-        console.log(`Built ${selected.length} buildings`);
-    });
+        // apply current visibility checkbox states (only if relevant)
+        if (doBuildings) ui.setBuildingsVisibility(!!ui.toggleBuildingsCheckbox?.checked);
+        if (doBuses) ui.setBusesVisibility(!!ui.toggleBusesCheckbox?.checked);
 
-    // Toggles
-    ui.toggleSelectionCheckbox.addEventListener("change", (e) => ui.setSelectionVisibility(e.target.checked));
-    ui.toggleBuildingsCheckbox.addEventListener("change", (e) => ui.setBuildingsVisibility(e.target.checked));
-    ui.toggleBusesCheckbox.addEventListener("change", (e) => ui.setBusesVisibility(e.target.checked));
+        console.log(
+            `Build completed. buildings=${doBuildings ? buildingsCount : 0}, buses=${doBuses}`
+        );
+    }
 
-    const buildOptions = document.getElementById("buildOptions");
-    const includeBuildings = document.getElementById("includeBuildings");
-    const includeBuses = document.getElementById("includeBuses");
-
-    ui.buildOptionsWrap = buildOptions;
-    ui.includeBuildingsCheckbox = includeBuildings;
-    ui.includeBusesCheckbox = includeBuses;
-
-    ui.showBuildOptions = (show) => {
-        ui.buildOptionsWrap?.classList.toggle("d-none", !show);
-    };
-
-
-    ui.themeSelect.addEventListener("change", (e) => {
-        const key = e.target.value;
+    function switchTheme(key) {
         const styleUrl = baseStyles[key];
         if (!styleUrl) return;
 
-        // Apply UI theme (uses CSS vars like html[data-ui-theme="dark"])
+        // UI theme switch (CSS vars)
         const uiThemeKey = uiThemes[key] || "light";
         document.documentElement.dataset.uiTheme = uiThemeKey;
 
-        // Save camera
+        // save camera
         const center = map.getCenter();
         const zoom = map.getZoom();
         const bearing = map.getBearing();
         const pitch = map.getPitch();
 
-        // Block drawing during switch (prevents the "source missing" click)
+        // don’t disable draw button (per your preference), but do cancel drawing mode
         state.selectionLayersReady = false;
         state.drawModeArmed = false;
-        if (ui.drawButton) {
-            ui.drawButton.disabled = true;
-            ui.drawButton.classList.remove("active");
-            ui.drawButton.textContent = "Loading theme…";
-        }
+        resetDrawButton();
 
-        console.log("before sources:", Object.keys(map.getStyle()?.sources || {}));
-
-        // Force a full rebuild (often helps)
         map.setStyle(styleUrl, { diff: false });
 
         waitForStyleReady(map, () => {
-            console.log("style ready; after sources:", Object.keys(map.getStyle()?.sources || {}));
             map.jumpTo({ center, zoom, bearing, pitch });
             setupCustomLayers(map, state);
-            console.log("restored selection source:", !!map.getSource("selection-rectangle"));
 
-            // Re-apply toggles
-            ui.setSelectionVisibility?.(ui.toggleSelectionCheckbox?.checked);
-            ui.setBuildingsVisibility?.(ui.toggleBuildingsCheckbox?.checked);
-            ui.setBusesVisibility?.(ui.toggleBusesCheckbox?.checked);
-
-            // Re-enable drawing
-            if (ui.drawButton) {
-                ui.drawButton.disabled = false;
-                ui.drawButton.textContent = "Draw rectangle";
-            }
-
+            // re-apply visibility settings for anything that exists
+            ui.setSelectionVisibility(!!ui.toggleSelectionCheckbox?.checked);
+            ui.setBuildingsVisibility(!!ui.toggleBuildingsCheckbox?.checked);
+            ui.setBusesVisibility(!!ui.toggleBusesCheckbox?.checked);
         });
+    }
+
+    // ---- Event listeners -----------------------------------------------------
+    ui.drawButton?.addEventListener("click", () => {
+        selectionTool.arm();
+        ui.drawButton?.classList.add("active");
+        if (ui.drawButton) ui.drawButton.textContent = "Click + drag to draw";
     });
 
+    ui.clearButton?.addEventListener("click", clearModelAndUI);
+
+    ui.build3DButton?.addEventListener("click", buildFromSelection);
+
+    ui.toggleSelectionCheckbox?.addEventListener("change", (e) =>
+        ui.setSelectionVisibility(e.target.checked)
+    );
+    ui.toggleBuildingsCheckbox?.addEventListener("change", (e) =>
+        ui.setBuildingsVisibility(e.target.checked)
+    );
+    ui.toggleBusesCheckbox?.addEventListener("change", (e) =>
+        ui.setBusesVisibility(e.target.checked)
+    );
+
+    ui.themeSelect?.addEventListener("change", (e) => switchTheme(e.target.value));
+
+    // ---- Initial UI state ----------------------------------------------------
     ui.showBuildOptions(false);
+    ui.showToggles(false);
+    ui.showSelectionToggle(false);
+    ui.showBuildingsToggle(false);
+    ui.showBusesToggle(false);
 
     return ui;
 }

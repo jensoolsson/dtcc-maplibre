@@ -73,7 +73,7 @@ export function setupCustomLayers(map, state) {
                     "#ffff00",
                     "#888888",
                 ],
-                "fill-extrusion-height": 30,
+                "fill-extrusion-height": ["coalesce", ["get", "dt_height"], 30],
                 "fill-extrusion-opacity": 0.9,
             },
         });
