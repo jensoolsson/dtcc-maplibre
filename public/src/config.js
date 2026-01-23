@@ -17,6 +17,33 @@ export const uiThemes = {
     default: "light",
 };
 
+export const uiSky = {
+    light: {
+        "sky-color": "#b1b7c0",
+        "horizon-color": "#f8fbff",
+        "sky-horizon-blend": 0.85,
+        "fog-color": "#999ba2",
+        "horizon-fog-blend": 0.6,
+        "fog-ground-blend": 0.15
+    },
+    dark: {
+        "sky-color": "#07162e",
+        "horizon-color": "#0b2c5e",
+        "sky-horizon-blend": 0.85,
+        "fog-color": "#050814",
+        "horizon-fog-blend": 0.6,
+        "fog-ground-blend": 0.15
+    },
+    default: {
+        "sky-color": "#68a0f9",
+        "horizon-color": "#f8fbff",
+        "sky-horizon-blend": 0.85,
+        "fog-color": "#999ba2",
+        "horizon-fog-blend": 0.6,
+        "fog-ground-blend": 0.15
+    },
+};
+
 
 export const initialView = {
     center: [18.0686, 59.3293],

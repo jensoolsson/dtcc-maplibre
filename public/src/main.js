@@ -34,7 +34,9 @@ map.on("load", async () => {
         showBusesToggle: () => { },
     };
 
-    applySkyForUITheme(map, document.documentElement.dataset.uiTheme || "light");
+    const skyKey = document.documentElement.dataset.uiTheme || "light";
+    console.log("Initial UI theme key:", skyKey);
+    applySkyForUITheme(map, skyKey);
 
     setupCustomLayers(map, state, ui);
 

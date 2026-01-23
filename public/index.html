@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en" data-ui-palette="dtcc3">
+<html lang="en" data-ui-palette="dtcc1">
 
 <head>
     <meta charset="utf-8" />
@@ -47,7 +47,6 @@
 
             /* Switches */
             --switch-on: rgb(153, 102, 255);
-            /* purple accent */
             --switch-off-bg: rgba(201, 203, 207, 0.25);
             --switch-off-border: rgba(201, 203, 207, 0.9);
 
@@ -118,27 +117,31 @@
             --chart-9: #ffffe0;
         }
 
+
         html[data-ui-palette="dtcc1"] {
-            --ui-accent: #2A8D8D;
-            --ui-accent-2: #2A6A78;
-            --ui-ok: #4DB093;
-            --ui-warn: #D1EC88;
-            --ui-danger: #2F4858;
+            --ui-accent: #47726A;
+            --ui-accent-2: #07352E;
+            --ui-ok: #89B6AD;
+            --ui-warn: #E1D279;
+            --ui-danger: #9A8D17;
 
             --ui-text: var(--text);
             --ui-muted: var(--muted);
 
-            --chart-1: #D1EC88;
-            --chart-2: #88D08F;
-            --chart-3: #4DB093;
-            --chart-4: #2A8D8D;
-            --chart-5: #2A6A78;
-            --chart-6: #2F4858;
+            --chart-1: #47726A;
+            --chart-2: #67948B;
+            --chart-3: #89B6AD;
+            --chart-4: #B3D8D0;
+            --chart-5: #F5F5F5;
+            --chart-6: #E1D279;
+            --chart-7: #BFAF3D;
+            --chart-8: #9A8D17;
+            --chart-9: #776D00;
         }
 
         html[data-ui-palette="dtcc2"] {
             --ui-accent: #36635B;
-            --ui-accent-2: #67948B;
+            --ui-accent-2: #07352E;
             --ui-ok: #9AC8BE;
             --ui-warn: #D2C050;
             --ui-danger: #9A8D17;
@@ -157,26 +160,6 @@
             --chart-9: #383000;
         }
 
-        html[data-ui-palette="dtcc3"] {
-            --ui-accent: #47726A;
-            --ui-accent-2: #67948B;
-            --ui-ok: #89B6AD;
-            --ui-warn: #E1D279;
-            --ui-danger: #9A8D17;
-
-            --ui-text: var(--text);
-            --ui-muted: var(--muted);
-
-            --chart-1: #47726A;
-            --chart-2: #67948B;
-            --chart-3: #89B6AD;
-            --chart-4: #B3D8D0;
-            --chart-5: #F5F5F5;
-            --chart-6: #E1D279;
-            --chart-7: #BFAF3D;
-            --chart-8: #9A8D17;
-            --chart-9: #776D00;
-        }
 
         html[data-ui-palette="candy"] {
             --ui-accent: #845EC2;
@@ -329,8 +312,8 @@
         }
 
         #build3DButton {
-            background-color: var(--ui-ok);
-            border-color: var(--ui-ok);
+            background-color: var(--ui-accent);
+            border-color: var(--ui-accent);
             color: #fff;
         }
 
@@ -499,10 +482,9 @@
                     <div class="mb-0">
                         <label for="paletteSelect" class="text-muted">Palette</label>
                         <select id="paletteSelect" class="form-select form-select-sm">
-                            <option value="dtcc1">DTCC1</option>
+                            <option value="dtcc1" selected>DTCC1</option>
                             <option value="dtcc2">DTCC2</option>
-                            <option value="dtcc3">DTCC3</option>
-                            <option value="chartjs" selected>Chartjs</option>
+                            <option value="chartjs">Chartjs</option>
                             <option value="diverging">Diverging</option>
                             <option value="candy">Candy</option>
                         </select>

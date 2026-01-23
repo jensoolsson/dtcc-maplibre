@@ -1,6 +1,6 @@
 // src/ui.js
 
-import { baseStyles, uiThemes } from "./config.js";
+import { baseStyles, uiThemes, uiSky } from "./config.js";
 import { setupCustomLayers } from "./layers.js";
 import { selectBuildings, applyBuildings, addRandomHeights, getBuildingType } from "./buildings.js";
 
@@ -85,42 +85,11 @@ function setBusesVisibility(map, state, show) {
     }
 }
 
-export function applySkyForUITheme(map, uiThemeKey) {
-    // Only visible when pitched (try pitch > ~20)
-    if (uiThemeKey === "dark") {
-        map.setSky({
-            "sky-color": "#07162e",        // deep blue
-            "horizon-color": "#0b2c5e",    // lighter blue near horizon
-            "sky-horizon-blend": 0.85,     // more blending = smoother gradient
-
-            // optional “atmosphere” feel
-            "fog-color": "#050814",
-            "horizon-fog-blend": 0.6,
-            "fog-ground-blend": 0.15
-        });
-    } else if (uiThemeKey === "light") {
-        map.setSky({
-            "sky-color": "#b1b7c0",        // deep blue
-            "horizon-color": "#f8fbff",    // lighter blue near horizon
-            "sky-horizon-blend": 0.85,     // more blending = smoother gradient
-
-            // optional “atmosphere” feel
-            "fog-color": "#999ba2",
-            "horizon-fog-blend": 0.6,
-            "fog-ground-blend": 0.15
-        });
-    } else {
-        map.setSky({
-            "sky-color": "#88b4fa",        // deep blue
-            "horizon-color": "#f8fbff",    // lighter blue near horizon
-            "sky-horizon-blend": 0.85,     // more blending = smoother gradient
-
-            // optional “atmosphere” feel
-            "fog-color": "#999ba2",
-            "horizon-fog-blend": 0.6,
-            "fog-ground-blend": 0.15
-        });
-    }
+export function applySkyForUITheme(map, skyKey = "default") {
+    // Pick config; fall back safely
+    const sky = uiSky[skyKey] || uiSky.default;
+    // Apply (sky visible when pitched; also requires a style that supports sky rendering)
+    map.setSky(sky);
 }
 
 /** Main UI factory */
@@ -430,6 +399,7 @@ export function createUI(map, state, selectionTool) {
 
         // UI theme switch (CSS vars)
         const uiThemeKey = uiThemes[key] || "light";
+        const skyKey = key; // map sky key matches UI theme key
         document.documentElement.dataset.uiTheme = uiThemeKey;
 
         // save camera
@@ -450,7 +420,7 @@ export function createUI(map, state, selectionTool) {
             map.jumpTo({ center, zoom, bearing, pitch });
             setupCustomLayers(map, state);
 
-            applySkyForUITheme(map, uiThemeKey);
+            applySkyForUITheme(map, skyKey);
             // re-apply visibility settings for anything that exists
             ui.setSelectionVisibility(!!ui.toggleSelectionCheckbox?.checked);
             ui.setBuildingsVisibility(!!ui.toggleBuildingsCheckbox?.checked);
