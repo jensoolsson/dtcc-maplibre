@@ -8,7 +8,7 @@ import { createSelectionTool } from "./selectionTool.js";
 import { loadBuildings, setupBuildingInteraction } from "./buildings.js";
 import { startVehicleLoop } from "./vehicles.js";
 import { setupRightMouseRotation } from "./rotation.js";
-import { createUI } from "./ui.js";
+import { createUI, applySkyForUITheme } from "./ui.js";
 
 const state = createState();
 const map = createMap(baseStyles.light);
@@ -34,7 +34,7 @@ map.on("load", async () => {
         showBusesToggle: () => { },
     };
 
-
+    applySkyForUITheme(map, document.documentElement.dataset.uiTheme || "light");
 
     setupCustomLayers(map, state, ui);
 

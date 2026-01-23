@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-ui-palette="dtcc3">
 
 <head>
     <meta charset="utf-8" />
@@ -72,6 +72,133 @@
         }
 
         /* ==========================================================================*/
+        /*  UI palettes                                                              */
+        /* ==========================================================================*/
+
+        /* Default palette (Chart.js-like) */
+        html[data-ui-palette="chartjs"] {
+            --ui-accent: rgb(54, 162, 235);
+            --ui-accent-2: rgb(153, 102, 255);
+            --ui-ok: rgb(75, 192, 192);
+            --ui-warn: rgb(255, 159, 64);
+            --ui-danger: rgb(255, 99, 132);
+
+            --ui-text: var(--text);
+            --ui-muted: var(--muted);
+
+            /* colours for charts (ordered) */
+            --chart-1: rgb(54, 162, 235);
+            --chart-2: rgb(75, 192, 192);
+            --chart-3: rgb(255, 205, 86);
+            --chart-4: rgb(153, 102, 255);
+            --chart-5: rgb(255, 159, 64);
+            --chart-6: rgb(201, 203, 207);
+            --chart-7: rgb(255, 99, 132);
+        }
+
+        /* Your diverging palette */
+        html[data-ui-palette="diverging"] {
+            --ui-accent: #00429d;
+            --ui-accent-2: #4771b2;
+            --ui-ok: #73a2c6;
+            --ui-warn: #ffbcaf;
+            --ui-danger: #cf3759;
+
+            --ui-text: var(--text);
+            --ui-muted: var(--muted);
+
+            --chart-1: #00429d;
+            --chart-2: #4771b2;
+            --chart-3: #73a2c6;
+            --chart-4: #a5d5d8;
+            --chart-5: #ffbcaf;
+            --chart-6: #f4777f;
+            --chart-7: #cf3759;
+            --chart-8: #93003a;
+            --chart-9: #ffffe0;
+        }
+
+        html[data-ui-palette="dtcc1"] {
+            --ui-accent: #2A8D8D;
+            --ui-accent-2: #2A6A78;
+            --ui-ok: #4DB093;
+            --ui-warn: #D1EC88;
+            --ui-danger: #2F4858;
+
+            --ui-text: var(--text);
+            --ui-muted: var(--muted);
+
+            --chart-1: #D1EC88;
+            --chart-2: #88D08F;
+            --chart-3: #4DB093;
+            --chart-4: #2A8D8D;
+            --chart-5: #2A6A78;
+            --chart-6: #2F4858;
+        }
+
+        html[data-ui-palette="dtcc2"] {
+            --ui-accent: #36635B;
+            --ui-accent-2: #67948B;
+            --ui-ok: #9AC8BE;
+            --ui-warn: #D2C050;
+            --ui-danger: #9A8D17;
+
+            --ui-text: var(--text);
+            --ui-muted: var(--muted);
+
+            --chart-1: #07352E;
+            --chart-2: #36635B;
+            --chart-3: #67948B;
+            --chart-4: #9AC8BE;
+            --chart-5: #F5F5F5;
+            --chart-6: #D2C050;
+            --chart-7: #9A8D17;
+            --chart-8: #675D00;
+            --chart-9: #383000;
+        }
+
+        html[data-ui-palette="dtcc3"] {
+            --ui-accent: #47726A;
+            --ui-accent-2: #67948B;
+            --ui-ok: #89B6AD;
+            --ui-warn: #E1D279;
+            --ui-danger: #9A8D17;
+
+            --ui-text: var(--text);
+            --ui-muted: var(--muted);
+
+            --chart-1: #47726A;
+            --chart-2: #67948B;
+            --chart-3: #89B6AD;
+            --chart-4: #B3D8D0;
+            --chart-5: #F5F5F5;
+            --chart-6: #E1D279;
+            --chart-7: #BFAF3D;
+            --chart-8: #9A8D17;
+            --chart-9: #776D00;
+        }
+
+        html[data-ui-palette="candy"] {
+            --ui-accent: #845EC2;
+            --ui-accent-2: #D65DB1;
+            --ui-ok: #FF6F91;
+            --ui-warn: #FF9671;
+            --ui-danger: #FFC75F;
+
+            --ui-text: var(--text);
+            --ui-muted: var(--muted);
+
+            --chart-1: #845EC2;
+            --chart-2: #D65DB1;
+            --chart-3: #FF6F91;
+            --chart-4: #FF9671;
+            --chart-5: #FFC75F;
+            --chart-6: #F9F871;
+        }
+
+
+
+        /* ==========================================================================*/
         /*  Global layout reset                                                      */
         /* ==========================================================================*/
 
@@ -125,6 +252,7 @@
         .topbar-title {
             font-weight: 600;
             letter-spacing: 0.2px;
+            font-size: 1.125rem;
         }
 
         #toolbar {
@@ -193,22 +321,28 @@
         /*  Buttons + switches                                                       */
         /* ==========================================================================*/
 
+        /* Buttons use palette accents (easy to try new palettes) */
         #drawButton {
-            background-color: var(--btn-primary-bg);
-            border-color: var(--btn-primary-border);
-            color: var(--btn-primary-text);
+            background-color: var(--ui-accent);
+            border-color: var(--ui-accent);
+            color: #fff;
         }
 
         #build3DButton {
-            background-color: var(--btn-success-bg);
-            border-color: var(--btn-success-border);
-            color: var(--btn-success-text);
+            background-color: var(--ui-ok);
+            border-color: var(--ui-ok);
+            color: #fff;
         }
 
         #clearButton {
-            background: var(--btn-clear-bg);
-            border-color: var(--btn-clear-border);
-            color: var(--btn-clear-text);
+            background-color: var(--ui-warn);
+            border-color: var(--ui-warn);
+            color: #111;
+        }
+
+        .form-check-input:checked {
+            background-color: var(--ui-accent-2);
+            border-color: var(--ui-accent-2);
         }
 
         .form-check-input {
@@ -216,10 +350,6 @@
             border-color: var(--switch-off-border);
         }
 
-        .form-check-input:checked {
-            background-color: var(--switch-on);
-            border-color: var(--switch-on);
-        }
 
         #drawButton:hover {
             filter: brightness(0.95);
@@ -294,71 +424,95 @@
 
     <!-- Toolbar panel -->
     <div id="toolbar" class="card shadow-sm map-panel">
-        <div class="card-body p-3">
-            <div class="d-flex align-items-center justify-content-between mb-2">
+        <div class="card-body p-2 small">
+
+            <div class="d-flex align-items-center justify-content-between mb-1">
                 <div class="fw-semibold">Controls</div>
                 <span class="badge text-bg-secondary">DTCC</span>
             </div>
 
-            <!-- Theme -->
-            <div class="mb-3">
-                <label for="themeSelect" class="form-label mb-1">Theme</label>
-                <select id="themeSelect" class="form-select form-select-sm">
-                    <option value="light" selected>Light</option>
-                    <option value="dark">Dark</option>
-                    <option value="default">Default</option>
-                </select>
-            </div>
-
             <!-- Buttons -->
-            <div class="d-grid gap-2 mb-3">
-                <button id="drawButton" class="btn btn-sm btn-dt-draw">
-                    Draw rectangle
-                </button>
+            <div class="d-grid gap-1 mb-2">
 
-                <!-- Build options (hidden until a selection exists) -->
-                <div id="buildOptions" class="vstack gap-2 d-none">
-                    <div class="small text-muted">Include in build</div>
+                <div class="panel-block">
+                    <div class="d-grid gap-1">
 
-                    <div class="form-check form-switch">
-                        <input class="form-check-input" type="checkbox" id="includeBuildings" checked>
-                        <label class="form-check-label" for="includeBuildings">Buildings</label>
-                    </div>
+                        <button id="drawButton" class="btn btn-sm btn-dt-draw">
+                            Draw rectangle
+                        </button>
 
-                    <div class="form-check form-switch">
-                        <input class="form-check-input" type="checkbox" id="includeBuses">
-                        <label class="form-check-label" for="includeBuses">Buses</label>
+                        <!-- Build options -->
+                        <div id="buildOptions" class="vstack gap-0 d-none">
+                            <div class="text-muted">Include in build</div>
+
+                            <div class="form-check form-switch">
+                                <input class="form-check-input" type="checkbox" id="includeBuildings" checked>
+                                <label class="form-check-label" for="includeBuildings">Buildings</label>
+                            </div>
+
+                            <div class="form-check form-switch">
+                                <input class="form-check-input" type="checkbox" id="includeBuses">
+                                <label class="form-check-label" for="includeBuses">Buses</label>
+                            </div>
+                        </div>
+
+                        <button id="build3DButton" class="btn btn-sm btn-dt-build">
+                            Build Twin
+                        </button>
+
+                        <!-- Toggles -->
+                        <div id="toggles" class="vstack gap-0 d-none">
+                            <div id="toggleSelectionRow" class="form-check form-switch">
+                                <input class="form-check-input" type="checkbox" id="toggleSelection" checked>
+                                <label class="form-check-label" for="toggleSelection">Show selection</label>
+                            </div>
+
+                            <div id="toggleBuildingsRow" class="form-check form-switch d-none">
+                                <input class="form-check-input" type="checkbox" id="toggleBuildings" checked>
+                                <label class="form-check-label" for="toggleBuildings">Show buildings</label>
+                            </div>
+
+                            <div id="toggleBusesRow" class="form-check form-switch d-none">
+                                <input class="form-check-input" type="checkbox" id="toggleBuses" checked>
+                                <label class="form-check-label" for="toggleBuses">Show buses</label>
+                            </div>
+                        </div>
+
+                        <button id="clearButton" class="btn btn-sm btn-dt-clear">
+                            Clear
+                        </button>
+
                     </div>
                 </div>
-                <button id="build3DButton" class="btn btn-sm btn-dt-build">
-                    Build Twin
-                </button>
 
-                <!-- Toggles -->
-                <div id="toggles" class="vstack gap-2 mb-3 d-none">
-                    <div id="toggleSelectionRow" class="form-check form-switch">
-                        <input class="form-check-input" type="checkbox" id="toggleSelection" checked>
-                        <label class="form-check-label" for="toggleSelection">Show selection</label>
+                <!-- Theme / palette -->
+                <div class="panel-block">
+                    <div class="mb-1">
+                        <label for="themeSelect" class="text-muted">Theme</label>
+                        <select id="themeSelect" class="form-select form-select-sm">
+                            <option value="light" selected>Light</option>
+                            <option value="dark">Dark</option>
+                            <option value="default">Default</option>
+                        </select>
                     </div>
 
-                    <div id="toggleBuildingsRow" class="form-check form-switch d-none">
-                        <input class="form-check-input" type="checkbox" id="toggleBuildings" checked>
-                        <label class="form-check-label" for="toggleBuildings">Show buildings</label>
-                    </div>
-
-                    <div id="toggleBusesRow" class="form-check form-switch d-none">
-                        <input class="form-check-input" type="checkbox" id="toggleBuses" checked>
-                        <label class="form-check-label" for="toggleBuses">Show buses</label>
+                    <div class="mb-0">
+                        <label for="paletteSelect" class="text-muted">Palette</label>
+                        <select id="paletteSelect" class="form-select form-select-sm">
+                            <option value="dtcc1">DTCC1</option>
+                            <option value="dtcc2">DTCC2</option>
+                            <option value="dtcc3">DTCC3</option>
+                            <option value="chartjs" selected>Chartjs</option>
+                            <option value="diverging">Diverging</option>
+                            <option value="candy">Candy</option>
+                        </select>
                     </div>
                 </div>
 
-
-                <button id="clearButton" class="btn btn-sm btn-dt-clear">
-                    Clear
-                </button>
             </div>
         </div>
     </div>
+
 
     <!-- Stats panel (right side) -->
     <div id="statsPanel" class="card shadow-sm map-panel">
@@ -393,7 +547,7 @@
             <!-- Chart block -->
             <div class="panel-block mb-3">
                 <div class="d-flex align-items-baseline justify-content-between mb-2">
-                    <div class="small text-muted">Height distribution</div>
+                    <div class="small text-muted">Building heights</div>
                     <div class="small text-muted">m</div>
                 </div>
                 <canvas id="statsChart" height="140"></canvas>

@@ -21,6 +21,45 @@ function waitForStyleReady(map, cb) {
     map.on("render", onRender);
 }
 
+/** Color palette helpers */
+function getChartPaletteFromCSS() {
+    const s = getComputedStyle(document.documentElement);
+    const cols = [];
+    for (let i = 1; i <= 9; i++) {
+        const v = s.getPropertyValue(`--chart-${i}`).trim();
+        if (v) cols.push(v);
+    }
+    return cols;
+}
+
+function applyPalette(ui, paletteKey) {
+    document.documentElement.dataset.uiPalette = paletteKey;
+
+    // Let CSS apply before reading vars + updating charts
+    requestAnimationFrame(() => applyChartColorsFromPalette(ui));
+}
+
+function applyChartColorsFromPalette(ui) {
+    const palette = getChartPaletteFromCSS();
+    if (!palette.length) return;
+
+    // Bar (height histogram)
+    if (ui._chart) {
+        ui._chart.data.datasets[0].backgroundColor = palette[0];
+        ui._chart.update();
+    }
+
+    // Pie (building types)
+    if (ui.typesChart) {
+        // Ensure enough colours for number of slices
+        const n = ui.typesChart.data.labels?.length || 0;
+        const colors = Array.from({ length: n }, (_, i) => palette[i % palette.length]);
+
+        ui.typesChart.data.datasets[0].backgroundColor = colors;
+        ui.typesChart.update();
+    }
+}
+
 /** Visibility helpers */
 function setSelectionVisibility(map, state, show) {
     if (!state.selectionLayersReady) return;
@@ -46,10 +85,51 @@ function setBusesVisibility(map, state, show) {
     }
 }
 
+export function applySkyForUITheme(map, uiThemeKey) {
+    // Only visible when pitched (try pitch > ~20)
+    if (uiThemeKey === "dark") {
+        map.setSky({
+            "sky-color": "#07162e",        // deep blue
+            "horizon-color": "#0b2c5e",    // lighter blue near horizon
+            "sky-horizon-blend": 0.85,     // more blending = smoother gradient
+
+            // optional “atmosphere” feel
+            "fog-color": "#050814",
+            "horizon-fog-blend": 0.6,
+            "fog-ground-blend": 0.15
+        });
+    } else if (uiThemeKey === "light") {
+        map.setSky({
+            "sky-color": "#b1b7c0",        // deep blue
+            "horizon-color": "#f8fbff",    // lighter blue near horizon
+            "sky-horizon-blend": 0.85,     // more blending = smoother gradient
+
+            // optional “atmosphere” feel
+            "fog-color": "#999ba2",
+            "horizon-fog-blend": 0.6,
+            "fog-ground-blend": 0.15
+        });
+    } else {
+        map.setSky({
+            "sky-color": "#88b4fa",        // deep blue
+            "horizon-color": "#f8fbff",    // lighter blue near horizon
+            "sky-horizon-blend": 0.85,     // more blending = smoother gradient
+
+            // optional “atmosphere” feel
+            "fog-color": "#999ba2",
+            "horizon-fog-blend": 0.6,
+            "fog-ground-blend": 0.15
+        });
+    }
+}
+
 /** Main UI factory */
 export function createUI(map, state, selectionTool) {
     // ---- DOM refs ------------------------------------------------------------
     const ui = {
+        // palette selector
+        paletteSelect: document.getElementById("paletteSelect"),
+
         // buttons
         drawButton: document.getElementById("drawButton"),
         clearButton: document.getElementById("clearButton"),
@@ -153,6 +233,8 @@ export function createUI(map, state, selectionTool) {
             ui._chart.data.datasets[0].data = counts;
             ui._chart.update();
         }
+
+        applyChartColorsFromPalette(ui);
     };
 
     ui.updateTypeChart = ({ features }) => {
@@ -175,18 +257,28 @@ export function createUI(map, state, selectionTool) {
             pieBox.style.height = `${base + Math.max(0, labels.length - 6) * extraPerLabel}px`;
         }
 
+        const palette = getChartPaletteFromCSS();
 
         if (!ui.typesChart) {
             ui.typesChart = new Chart(ui.typesCanvas, {
                 type: "pie",
-                data: { labels, datasets: [{ data }] },
+                data: {
+                    labels,
+                    datasets: [
+                        {
+                            data,
+                            backgroundColor: palette,    // use CSS palette
+                            borderWidth: 0               // optional: cleaner look
+                        },
+                    ],
+                },
                 options: {
                     responsive: true,
-                    maintainAspectRatio: false,   // important for flexible container sizing
+                    maintainAspectRatio: false,
                     plugins: {
                         legend: {
                             display: true,
-                            position: "bottom",        // 👈 structured legend
+                            position: "bottom",
                             align: "start",
                             labels: {
                                 boxWidth: 10,
@@ -200,10 +292,14 @@ export function createUI(map, state, selectionTool) {
                 },
             });
         } else {
+            // keep palette in sync when data/labels change
             ui.typesChart.data.labels = labels;
             ui.typesChart.data.datasets[0].data = data;
+            ui.typesChart.data.datasets[0].backgroundColor = palette;
             ui.typesChart.update();
         }
+
+        applyChartColorsFromPalette(ui);
     };
 
 
@@ -349,10 +445,12 @@ export function createUI(map, state, selectionTool) {
 
         map.setStyle(styleUrl, { diff: false });
 
+
         waitForStyleReady(map, () => {
             map.jumpTo({ center, zoom, bearing, pitch });
             setupCustomLayers(map, state);
 
+            applySkyForUITheme(map, uiThemeKey);
             // re-apply visibility settings for anything that exists
             ui.setSelectionVisibility(!!ui.toggleSelectionCheckbox?.checked);
             ui.setBuildingsVisibility(!!ui.toggleBuildingsCheckbox?.checked);
@@ -371,17 +469,15 @@ export function createUI(map, state, selectionTool) {
 
     ui.build3DButton?.addEventListener("click", buildFromSelection);
 
-    ui.toggleSelectionCheckbox?.addEventListener("change", (e) =>
-        ui.setSelectionVisibility(e.target.checked)
-    );
-    ui.toggleBuildingsCheckbox?.addEventListener("change", (e) =>
-        ui.setBuildingsVisibility(e.target.checked)
-    );
-    ui.toggleBusesCheckbox?.addEventListener("change", (e) =>
-        ui.setBusesVisibility(e.target.checked)
-    );
+    ui.toggleSelectionCheckbox?.addEventListener("change", (e) => ui.setSelectionVisibility(e.target.checked));
+
+    ui.toggleBuildingsCheckbox?.addEventListener("change", (e) => ui.setBuildingsVisibility(e.target.checked));
+
+    ui.toggleBusesCheckbox?.addEventListener("change", (e) => ui.setBusesVisibility(e.target.checked));
 
     ui.themeSelect?.addEventListener("change", (e) => switchTheme(e.target.value));
+
+    ui.paletteSelect?.addEventListener("change", (e) => { applyPalette(ui, e.target.value); });
 
     // ---- Initial UI state ----------------------------------------------------
     ui.showBuildOptions(false);
